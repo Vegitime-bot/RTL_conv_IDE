@@ -1,0 +1,4006 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RTL Converter</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Space+Grotesk:wght@300;400;500;600&display=swap');
+:root{
+  --bg:#0d0f14;--surface:#161c28;--s2:#1e2736;
+  --border:#2e3d54;--b2:#405270;
+  --accent:#6ab8ff;--purple:#b090e8;
+  --green:#4ee89e;--red:#ff7d87;--amber:#ffc340;
+  --text:#f0f4fc;--text2:#bccce0;--text3:#8fa8c0;
+  --mono:'JetBrains Mono',monospace;--sans:'Space Grotesk',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);height:100vh;display:flex;flex-direction:column;overflow:hidden;}
+
+/* Header */
+header{border-bottom:1px solid var(--border);padding:10px 18px;display:flex;align-items:center;gap:10px;background:var(--surface);flex-shrink:0;}
+.logo{font-family:var(--mono);font-size:13px;font-weight:700;color:var(--accent);letter-spacing:.08em;text-transform:uppercase;}
+.logo span{color:var(--text2);font-weight:300;}
+.badge{font-family:var(--mono);font-size:10px;background:#1c2535;border:1px solid var(--b2);color:var(--text2);padding:2px 8px;border-radius:4px;}
+.badge.hi{color:var(--accent);border-color:rgba(79,158,255,.3);}
+
+/* Stepbar */
+.stepbar{display:flex;border-bottom:1px solid var(--border);background:var(--surface);padding:0 18px;overflow-x:auto;flex-shrink:0;}
+.sb{font-family:var(--mono);font-size:12px;color:var(--text3);padding:9px 14px;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;display:flex;align-items:center;gap:5px;}
+.sb:hover{color:var(--text2);}
+.sb.active{color:var(--accent);border-bottom-color:var(--accent);}
+.sb.done .sn{background:var(--green);color:#fff;}
+.sn{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;background:var(--b2);border-radius:50%;font-size:10px;color:var(--text2);}
+.sb.active .sn{background:var(--accent);color:#fff;}
+
+/* Main */
+.main{flex:1;overflow:hidden;display:flex;flex-direction:column;}
+.view{flex:1;display:none;overflow:hidden;flex-direction:column;}
+.view.active{display:flex;}
+
+/* Dual split */
+.dual{flex:1;display:grid;grid-template-columns:1fr 1fr;overflow:hidden;}
+.panel{border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;}
+.panel:last-child{border-right:none;}
+
+/* Panel header */
+.ph{padding:7px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--surface);flex-shrink:0;}
+.pt{font-family:var(--mono);font-size:12px;font-weight:500;color:var(--text2);letter-spacing:.06em;text-transform:uppercase;display:flex;align-items:center;gap:5px;}
+.dot{width:5px;height:5px;border-radius:50%;}
+.dot.g{background:var(--green);}.dot.a{background:var(--amber);}.dot.b{background:var(--accent);}.dot.p{background:var(--purple);}
+
+/* File tabs */
+.ftabs{display:flex;align-items:center;border-bottom:1px solid var(--border);background:var(--s2);padding:0 6px;overflow-x:auto;flex-shrink:0;min-height:32px;}
+.ftab{font-family:var(--mono);font-size:12px;color:var(--text3);padding:5px 10px;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;display:flex;align-items:center;gap:4px;transition:color .1s;}
+.ftab:hover{color:var(--text2);}
+.ftab.active{color:var(--accent);border-bottom-color:var(--accent);}
+.ftab .x{color:var(--text3);line-height:1;padding:0 1px;border-radius:2px;font-size:12px;}
+.ftab .x:hover{color:var(--red);}
+
+/* Drop zone */
+.dz{border:1.5px dashed var(--b2);border-radius:6px;margin:8px;padding:14px;text-align:center;cursor:pointer;transition:all .2s;flex-shrink:0;}
+.dz:hover,.dz.over{border-color:var(--accent);background:rgba(106,184,255,.05);}
+.dz p{font-family:var(--mono);font-size:13px;color:var(--text3);}
+.dz p .hi{color:var(--accent);}
+.dz p.sub{margin-top:4px;font-size:12px;}
+.file-input{display:none;}
+
+/* Textarea */
+textarea{flex:1;font-family:var(--mono);font-size:12px;line-height:1.7;background:var(--bg);color:var(--text);border:none;outline:none;resize:none;padding:10px 14px;overflow:auto;}
+textarea::placeholder{color:var(--text3);}
+
+/* Diff view */
+.diff-wrap{flex:1;display:flex;flex-direction:column;overflow:hidden;}
+.diff-tabs{display:flex;align-items:center;border-bottom:1px solid var(--border);background:var(--surface);padding:0 10px;overflow-x:auto;flex-shrink:0;min-height:30px;}
+.dtab{font-family:var(--mono);font-size:12px;color:var(--text3);padding:5px 10px;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;}
+.dtab:hover{color:var(--text2);}
+.dtab.active{color:var(--accent);border-bottom-color:var(--accent);}
+.diff-block{flex:1;font-family:var(--mono);font-size:13px;line-height:1.75;background:var(--bg);overflow:auto;padding:10px 0;}
+.dl{padding:2px 14px;display:flex;gap:7px;white-space:pre;}
+.dl.add{background:rgba(78,232,158,.1);color:#4ee89e;}
+.dl.rem{background:rgba(255,125,135,.1);color:#ff7d87;}
+.dl.sam{color:var(--text2);}
+.gut{color:var(--text3);user-select:none;min-width:16px;font-size:11px;}
+.diff-footer{padding:5px 14px;background:var(--surface);border-top:1px solid var(--border);font-family:var(--mono);font-size:12px;color:var(--text2);flex-shrink:0;}
+
+/* Summary */
+.sum-wrap{flex:1;overflow:auto;padding:14px 18px;display:flex;flex-direction:column;gap:12px;}
+.scard{background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden;display:flex;flex-direction:column;}
+.sch{padding:8px 12px;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:12px;font-weight:500;letter-spacing:.06em;text-transform:uppercase;display:flex;align-items:center;gap:6px;flex-shrink:0;}
+.scb{padding:10px 12px;display:flex;flex-direction:column;gap:5px;overflow-y:auto;max-height:220px;}
+.si{display:flex;gap:6px;align-items:flex-start;font-size:12px;}
+.si p{color:var(--text2);line-height:1.5;}
+.no-ch{font-family:var(--mono);font-size:11px;color:var(--text3);}
+
+/* RTL list */
+.file-list{flex:1;overflow-y:auto;}
+.frow{display:flex;align-items:center;gap:8px;padding:8px 14px;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:13px;}
+.frow:hover{background:var(--surface);}
+.fname{flex:1;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.fsz{color:var(--text2);min-width:55px;text-align:right;}
+.fst{min-width:72px;text-align:center;padding:2px 6px;border-radius:4px;font-size:11px;}
+.fs-w{background:var(--border);color:var(--text2);}
+.fs-r{background:rgba(255,195,64,.18);color:var(--amber);}
+.fs-o{background:rgba(78,232,158,.18);color:var(--green);}
+.fs-e{background:rgba(255,125,135,.18);color:var(--red);}
+.dbtn{color:var(--text3);background:none;border:none;cursor:pointer;font-size:14px;}
+.dbtn:hover{color:var(--red);}
+
+/* Result */
+.rtabs{display:flex;align-items:center;border-bottom:1px solid var(--border);background:var(--surface);padding:0 10px;overflow-x:auto;flex-shrink:0;}
+.rtab{font-family:var(--mono);font-size:12px;color:var(--text3);padding:7px 11px;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;}
+.rtab:hover{color:var(--text2);}
+.rtab.active{color:var(--accent);border-bottom-color:var(--accent);}
+.rtab.ok{color:var(--green);}.rtab.ok.active{border-bottom-color:var(--green);}
+.rtab.er{color:var(--red);}
+.result-area{flex:1;font-family:var(--mono);font-size:13px;line-height:1.75;background:var(--bg);color:var(--text);overflow:auto;padding:11px 14px;white-space:pre;}
+.hl-a{background:rgba(106,184,255,.10);display:block;}
+.hl-u{background:rgba(176,144,232,.10);display:block;}
+.hl-b{background:rgba(78,232,158,.10);display:block;}
+.expl{border-top:1px solid var(--border);background:var(--surface);padding:9px 14px;flex-shrink:0;max-height:140px;overflow-y:auto;}
+.expl h4{font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:6px;}
+.ci{display:flex;gap:6px;align-items:flex-start;margin-bottom:5px;flex-wrap:wrap;}
+.ci p{color:var(--text2);line-height:1.5;font-size:12px;}
+.pill{font-family:var(--mono);font-size:11px;padding:2px 7px;border-radius:3px;white-space:nowrap;flex-shrink:0;}
+.pill.add{background:rgba(78,232,158,.18);color:var(--green);}
+.pill.mod{background:rgba(106,184,255,.18);color:var(--accent);}
+.pill.rem{background:rgba(255,125,135,.18);color:var(--red);}
+.pill.ua{background:rgba(176,144,232,.18);color:var(--purple);}
+
+/* Action strip */
+.astrip{padding:8px 18px;border-top:1px solid var(--border);display:flex;align-items:center;gap:8px;background:var(--surface);flex-shrink:0;}
+.btn{font-family:var(--mono);font-size:13px;font-weight:600;letter-spacing:.04em;padding:7px 15px;border-radius:5px;cursor:pointer;border:1px solid transparent;transition:all .15s;text-transform:uppercase;}
+.btn-p{background:var(--accent);color:#fff;}.btn-p:hover{background:#4a96e8;}.btn-p:disabled{opacity:.4;cursor:not-allowed;}
+.btn-g{background:transparent;color:var(--text2);border-color:var(--b2);}.btn-g:hover{color:var(--text);border-color:var(--accent);}
+.status{font-family:var(--mono);font-size:12px;color:var(--text3);margin-left:auto;}
+.status.lo{color:var(--amber);}.status.ok{color:var(--green);}.status.er{color:var(--red);}
+
+/* Config / Console */
+.cfg{display:flex;align-items:center;gap:8px;padding:7px 18px;background:#0a0c10;border-top:1px solid var(--border);flex-shrink:0;flex-wrap:wrap;}
+.cfg label{font-family:var(--mono);font-size:12px;color:var(--text2);white-space:nowrap;}
+.cfg input{font-family:var(--mono);font-size:12px;background:var(--surface);border:1px solid var(--b2);color:var(--text);padding:4px 9px;border-radius:4px;outline:none;}
+.cfg .ch{width:190px;}.cfg .cm{width:150px;}
+.pbtn{font-family:var(--mono);font-size:12px;background:var(--b2);border:none;color:var(--text2);padding:4px 11px;border-radius:4px;cursor:pointer;}
+.pbtn:hover{color:var(--text);}
+#ps{font-family:var(--mono);font-size:12px;color:var(--text2);}
+.dbg-bar{display:flex;align-items:center;justify-content:space-between;padding:5px 13px;background:#07090d;border-top:1px solid var(--border);flex-shrink:0;cursor:pointer;user-select:none;}
+.dbg-title{font-family:var(--mono);font-size:12px;color:var(--text2);display:flex;align-items:center;gap:6px;}
+.dbg-ind{width:6px;height:6px;border-radius:50%;background:var(--text3);}
+.dbg-ind.lo{background:var(--amber);}.dbg-ind.ok{background:var(--green);}.dbg-ind.er{background:var(--red);}
+.dbg-tog{font-family:var(--mono);font-size:12px;color:var(--text2);background:none;border:none;cursor:pointer;}
+.dbg-con{height:0;overflow:hidden;background:#07090d;font-family:var(--mono);font-size:12px;line-height:1.65;transition:height .2s;}
+.dbg-con.open{height:140px;overflow-y:auto;}
+.dbl{padding:2px 13px;display:flex;gap:7px;border-bottom:1px solid rgba(255,255,255,.03);}
+.dbl .ts{color:var(--text3);flex-shrink:0;font-size:11px;}
+.dbl .tag{flex-shrink:0;padding:1px 6px;border-radius:3px;font-size:11px;}
+.dbl .msg{color:var(--text2);word-break:break-all;white-space:pre-wrap;}
+.tag.req{background:rgba(106,184,255,.18);color:var(--accent);}
+.tag.res{background:rgba(78,232,158,.18);color:var(--green);}
+.tag.err{background:rgba(255,125,135,.18);color:var(--red);}
+.tag.inf{background:rgba(255,195,64,.14);color:var(--amber);}
+
+/* Misc */
+.legend{display:flex;gap:9px;font-family:var(--mono);font-size:12px;color:var(--text2);}
+.li{display:flex;align-items:center;gap:3px;}
+.ld{width:8px;height:8px;border-radius:2px;}
+.ld-a{background:rgba(106,184,255,.6);}.ld-u{background:rgba(176,144,232,.6);}.ld-b{background:rgba(78,232,158,.6);}
+.cbtn{font-family:var(--mono);font-size:12px;background:var(--b2);border:none;color:var(--text2);padding:3px 10px;border-radius:3px;cursor:pointer;}
+.cbtn:hover{color:var(--text);}
+.dlbtn{font-family:var(--mono);font-size:12px;background:rgba(78,232,158,.12);border:1px solid rgba(78,232,158,.25);color:var(--green);padding:3px 10px;border-radius:3px;cursor:pointer;}
+.dlbtn:hover{background:rgba(78,232,158,.22);}
+/* Card mapping */
+.fcard{background:var(--surface);border:1.5px solid var(--b2);border-radius:7px;padding:8px 11px;margin-bottom:8px;cursor:pointer;transition:border-color .15s,background .15s;position:relative;user-select:none;}
+.fcard:hover{border-color:var(--accent);background:var(--s2);}
+.fcard.selected{border-color:var(--accent);background:rgba(79,158,255,.08);box-shadow:0 0 0 2px rgba(79,158,255,.25);}
+.fcard.matched{border-color:var(--green);background:rgba(61,214,140,.05);}
+.fcard.matched.selected{border-color:var(--accent);box-shadow:0 0 0 2px rgba(79,158,255,.25);}
+.fcard-name{font-family:var(--mono);font-size:12px;font-weight:500;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.fcard-meta{font-family:var(--mono);font-size:11px;color:var(--text2);margin-top:3px;}
+.fcard-badge{position:absolute;top:6px;right:28px;font-family:var(--mono);font-size:10px;padding:1px 6px;border-radius:3px;background:rgba(61,214,140,.18);color:var(--green);}
+.fcard-del{position:absolute;top:5px;right:6px;background:none;border:none;color:var(--text3);font-size:13px;line-height:1;padding:2px 4px;border-radius:3px;cursor:pointer;opacity:0;transition:opacity .15s;}
+.fcard:hover .fcard-del{opacity:1;}
+.fcard-del:hover{color:var(--red);background:rgba(255,95,107,.1);}
+.map-line{stroke:var(--green);stroke-width:1.5;fill:none;opacity:.7;cursor:pointer;pointer-events:stroke;}
+.map-line:hover{stroke:var(--red);stroke-width:2.5;opacity:1;}
+.map-line-draft{stroke:var(--accent);stroke-width:1.5;fill:none;stroke-dasharray:5 3;opacity:.8;}
+.col-label{font-family:var(--mono);font-size:12px;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--border);}
+
+.map-row{display:flex;align-items:center;gap:5px;padding:5px 2px;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:12px;}
+.map-row:last-child{border-bottom:none;}
+.map-asis{flex:1;color:var(--amber);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.map-arrow{color:var(--text3);flex-shrink:0;}
+.map-sel{flex:1;font-family:var(--mono);font-size:12px;background:var(--bg);border:1px solid var(--b2);color:var(--text);padding:4px 6px;border-radius:4px;outline:none;min-width:0;}
+.map-sel:focus{border-color:var(--accent);}
+.map-sel option{background:var(--surface);}
+.sfile-row{display:flex;align-items:center;gap:7px;padding:6px 13px;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:12px;}
+.sfile-row:hover{background:var(--s2);}
+.sfile-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);}
+.sfile-del{color:var(--text3);background:none;border:none;cursor:pointer;padding:0 3px;font-size:13px;}
+.sfile-del:hover{color:var(--red);}
+
+.empty{flex:1;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:6px;color:var(--text3);}
+
+/* 파라미터 팝업 폼 */
+.param-row{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid var(--border);}
+.param-row:last-of-type{border-bottom:none;}
+.param-label{display:flex;flex-direction:column;gap:2px;flex:1;}
+.param-name{font-family:var(--mono);font-size:12px;font-weight:600;color:var(--text);}
+.param-desc{font-family:var(--mono);font-size:10px;color:var(--text3);line-height:1.4;}
+.param-input{font-family:var(--mono);font-size:12px;background:var(--bg);border:1px solid var(--b2);color:var(--text);padding:4px 8px;border-radius:4px;outline:none;width:100px;text-align:right;}
+.param-input:focus{border-color:var(--accent);}
+.param-input:disabled{opacity:.45;cursor:not-allowed;}
+.param-unit{font-family:var(--mono);font-size:11px;color:var(--text3);white-space:nowrap;}
+/* 새 팝업 그리드 행 */
+.pp-row{display:grid;grid-template-columns:1fr 40px 100px 100px;gap:8px;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);}
+.pp-row:last-child{border-bottom:none;}
+.pp-row.disabled-row{opacity:.45;}
+.pp-info{display:flex;flex-direction:column;gap:2px;}
+.pp-name{font-family:var(--mono);font-size:12px;font-weight:600;color:var(--text);}
+.pp-desc{font-family:var(--mono);font-size:10px;color:var(--text3);line-height:1.4;}
+.pp-use{display:flex;justify-content:center;align-items:center;}
+.pp-use input{width:15px;height:15px;accent-color:var(--accent);cursor:pointer;}
+.pp-mode{display:flex;justify-content:center;}
+.pp-sel{font-family:var(--mono);font-size:11px;background:var(--bg);border:1px solid var(--b2);color:var(--text2);padding:3px 5px;border-radius:4px;outline:none;cursor:pointer;}
+.pp-sel:disabled{opacity:.4;cursor:not-allowed;}
+.pp-val{display:flex;align-items:center;gap:4px;justify-content:flex-end;}
+.pp-autoval{font-family:var(--mono);font-size:12px;color:var(--green);font-weight:600;}
+.split-handle-h{
+  height:5px;flex-shrink:0;cursor:row-resize;
+  background:var(--border);border-top:1px solid var(--border);
+  transition:background .15s;position:relative;z-index:10;
+}
+.split-handle-h:hover,.split-handle-h.dragging{background:var(--accent);}
+.split-handle-h::after{
+  content:'';position:absolute;top:50%;left:50%;
+  transform:translate(-50%,-50%);
+  height:1px;width:24px;
+  background:var(--text3);border-radius:1px;
+  opacity:.5;
+}
+.split-handle{
+  width:5px;flex-shrink:0;cursor:col-resize;
+  background:var(--border);border-left:1px solid var(--border);
+  transition:background .15s;position:relative;z-index:10;
+}
+.split-handle:hover,.split-handle.dragging{background:var(--accent);}
+.split-handle::after{
+  content:'';position:absolute;top:50%;left:50%;
+  transform:translate(-50%,-50%);
+  width:1px;height:24px;
+  background:var(--text3);border-radius:1px;
+  opacity:.5;
+}
+.impact-item{margin-bottom:10px;padding:9px 11px;border-radius:6px;border-left:3px solid var(--b2);background:var(--s2);}
+.impact-item.high{border-left-color:var(--red);}
+.impact-item.med{border-left-color:var(--amber);}
+.impact-item.low{border-left-color:var(--accent);}
+.impact-tag{font-family:var(--mono);font-size:11px;padding:2px 7px;border-radius:3px;margin-right:5px;font-weight:500;}
+.impact-tag.sig{background:rgba(255,125,135,.18);color:var(--red);}
+.impact-tag.timing{background:rgba(255,195,64,.18);color:var(--amber);}
+.impact-tag.port{background:rgba(106,184,255,.18);color:var(--accent);}
+.impact-tag.logic{background:rgba(176,144,232,.18);color:var(--purple);}
+.impact-tag.param{background:rgba(78,232,158,.18);color:var(--green);}
+.impact-desc{font-family:var(--mono);font-size:12px;color:var(--text);margin-top:5px;line-height:1.65;}
+.impact-ref{font-family:var(--mono);font-size:11px;color:var(--text2);margin-top:4px;}
+.iter-filechk{display:flex;align-items:center;gap:5px;font-family:var(--mono);font-size:12px;padding:4px 9px;border-radius:4px;border:1px solid var(--b2);cursor:pointer;transition:border-color .15s,background .15s;}
+.iter-filechk:hover{border-color:var(--accent);}
+.iter-filechk.sel{border-color:var(--accent);background:rgba(106,184,255,.09);}
+.iter-filechk.auto{border-color:var(--green);background:rgba(78,232,158,.08);}
+.iter-filechk input{accent-color:var(--accent);margin:0;}
+.iter-filechk .fname-lbl{color:var(--text);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.iter-filechk .fsize-lbl{color:var(--text3);font-size:11px;}
+/* 버전 탭 */
+.vtab{font-family:var(--mono);font-size:12px;padding:4px 10px;border-radius:3px;border:1px solid var(--b2);background:none;color:var(--text3);cursor:pointer;margin-right:3px;}
+.vtab:hover{color:var(--text2);}
+.vtab.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+.vtab.latest::after{content:'●';color:var(--green);font-size:10px;margin-left:3px;vertical-align:super;}
+.mon-step{display:flex;align-items:flex-start;gap:8px;font-family:var(--mono);font-size:12px;padding:3px 0;}
+.mon-icon{width:16px;flex-shrink:0;text-align:center;margin-top:1px;}
+.mon-label{color:var(--text2);flex-shrink:0;min-width:160px;}
+.mon-detail{color:var(--text3);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.mon-step.active .mon-label{color:var(--accent);}
+.mon-step.active .mon-icon{color:var(--accent);}
+.mon-step.done .mon-label{color:var(--green);}
+.mon-step.done .mon-icon{color:var(--green);}
+.mon-step.err .mon-label{color:var(--red);}
+.mon-step.err .mon-icon{color:var(--red);}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spin{display:inline-block;animation:spin .8s linear infinite;}
+.empty .ic{font-size:22px;margin-bottom:3px;opacity:.35;}
+.empty p{font-family:var(--mono);font-size:11px;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.spinner{display:inline-block;width:11px;height:11px;border:2px solid var(--b2);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:4px;}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">RTL<span>·</span>Converter</div>
+  <div class="badge">Verilog / SystemVerilog</div>
+  <div class="badge hi" style="margin-left:auto;" id="hBadge">—</div>
+</header>
+
+<div class="stepbar">
+  <button class="sb active" id="s0" onclick="goStep(0)"><span class="sn">1</span>RTL Files</button>
+  <button class="sb" id="s1" onclick="goStep(1)"><span class="sn">2</span>Algorithm</button>
+  <button class="sb" id="s2" onclick="goStep(2)"><span class="sn">3</span>Algo Diff</button>
+  <button class="sb" id="s3" onclick="goStep(3)"><span class="sn">4</span>μArch Docs</button>
+  <button class="sb" id="s4" onclick="goStep(4)"><span class="sn">5</span>μArch Diff</button>
+  <button class="sb" id="s5" onclick="goStep(5)"><span class="sn">6</span>Summary</button>
+  <button class="sb" id="s6" onclick="goStep(6)"><span class="sn">7</span>Results</button>
+</div>
+
+<div class="main">
+
+  <!-- Step 0: Algorithm — card mapping -->
+  <div class="view" id="view0">
+    <!-- Upload row -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid var(--border);flex-shrink:0;">
+      <div style="padding:8px 12px;border-right:1px solid var(--border);">
+        <div class="ph" style="padding:0 0 6px;border:none;">
+          <div class="pt"><div class="dot a"></div>AS-IS 알고리즘</div>
+          <button class="btn-g btn" style="font-size:12px;padding:4px 10px;" onclick="triggerFile('aiIn')">+ 파일</button>
+          <input type="file" id="aiIn" class="file-input" accept=".py,.txt,.md" multiple>
+        </div>
+        <div class="dz" id="dzAI" style="margin:0;">
+          <p>📄 <span class="hi">클릭</span>하거나 드래그 &nbsp;·&nbsp; .py .txt .md</p>
+        </div>
+        <textarea id="aiText" placeholder="파일 없을 시 직접 입력" style="height:60px;border-top:1px solid var(--border);margin-top:6px;border-radius:4px;"></textarea>
+      </div>
+      <div style="padding:8px 12px;">
+        <div class="ph" style="padding:0 0 6px;border:none;">
+          <div class="pt"><div class="dot g"></div>TO-BE 알고리즘</div>
+          <button class="btn-g btn" style="font-size:12px;padding:4px 10px;" onclick="triggerFile('atIn')">+ 파일</button>
+          <input type="file" id="atIn" class="file-input" accept=".py,.txt,.md" multiple>
+        </div>
+        <div class="dz" id="dzAT" style="margin:0;">
+          <p>📄 <span class="hi">클릭</span>하거나 드래그 &nbsp;·&nbsp; .py .txt .md</p>
+        </div>
+        <textarea id="atText" placeholder="파일 없을 시 직접 입력" style="height:60px;border-top:1px solid var(--border);margin-top:6px;border-radius:4px;"></textarea>
+      </div>
+    </div>
+    <!-- Card mapping area -->
+    <div style="flex:1;overflow:hidden;display:flex;flex-direction:column;">
+      <div style="padding:6px 14px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0;">
+        <span style="font-family:var(--mono);font-size:10px;color:var(--text3);">AS-IS 카드를 클릭 → TO-BE 카드 클릭으로 연결 &nbsp;·&nbsp; 연결선 클릭 시 삭제</span>
+        <button class="btn-g btn" style="font-size:12px;padding:4px 12px;" onclick="autoMap('algo')">자동 매핑</button>
+      </div>
+      <div style="flex:1;position:relative;overflow:hidden;" id="algoMapArea">
+        <svg style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;" id="algoSvg"></svg>
+        <div style="position:absolute;top:0;left:0;width:50%;height:100%;overflow-y:auto;padding:12px 8px 12px 14px;" id="aiCards"></div>
+        <div style="position:absolute;top:0;right:0;width:50%;height:100%;overflow-y:auto;padding:12px 14px 12px 8px;" id="atCards"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 1: Algo Diff (per-file tabs) -->
+  <div class="view" id="view1">
+    <div id="algoDiffGrid" style="display:grid;grid-template-columns:1fr 5px 340px;flex:1;overflow:hidden;position:relative;">
+      <!-- 좌: LCS diff -->
+      <div class="diff-wrap" style="border-right:none;overflow:hidden;">
+        <div class="diff-tabs" id="adTabs"></div>
+        <div class="diff-block" id="adBlock"><div class="empty"><div class="ic">⊘</div><p>Step 1에서 파일을 추가하세요</p></div></div>
+        <div class="diff-footer" id="adFoot"></div>
+      </div>
+      <!-- 드래그 핸들 -->
+      <div class="split-handle" id="algoHandle" onmousedown="startSplit(event,'algoDiffGrid','algoHandle')"></div>
+      <!-- 우: RTL 관련 변경점 요약 -->
+      <div style="display:flex;flex-direction:column;overflow:hidden;background:var(--surface);">
+        <div style="padding:7px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-shrink:0;">
+          <div class="pt"><div class="dot b"></div>RTL 관련 변경점</div>
+          <span id="adImpactCnt" style="font-family:var(--mono);font-size:11px;color:var(--text3);"></span>
+          <div style="margin-left:auto;display:flex;gap:4px;">
+            <button id="adUndoBtn" class="btn-g btn" style="font-size:11px;padding:4px 11px;" onclick="impactUndo('algo')" disabled title="실행 취소">↩</button>
+            <button id="adRedoBtn" class="btn-g btn" style="font-size:11px;padding:4px 11px;" onclick="impactRedo('algo')" disabled title="다시 실행">↪</button>
+            <button id="adAnalyzeBtn" class="btn-g btn" style="font-size:11px;padding:4px 13px;" onclick="reAnalyzeImpact('algo')">AI 분석</button>
+          </div>
+        </div>
+        <div id="adImpact" style="flex:1;overflow-y:auto;padding:10px 12px;">
+          <div style="font-family:var(--mono);font-size:12px;color:var(--text3);line-height:1.7;">
+            AI 분석 버튼을 눌러 RTL 영향 변경점을 추출하세요<br>
+            <span style="color:var(--text3);font-size:11px;">하단 입력창에 추가 지시사항을 먼저 작성할 수 있습니다</span>
+          </div>
+        </div>
+        <div id="adImpactAdd" style="border-top:1px solid var(--border);padding:10px 12px;flex-shrink:0;background:var(--bg);">
+          <div style="font-family:var(--mono);font-size:11px;color:var(--text3);margin-bottom:6px;">
+            추가 지시사항 — 최초 분석 및 재분석 시 이 내용을 함께 반영합니다
+          </div>
+          <div style="display:flex;gap:6px;align-items:flex-start;">
+            <textarea id="adImpactInput" rows="2"
+              placeholder="예) MUL 연산 결과 폭 64비트 확장 관련 항목 누락된 것 같아&#10;예) timing 관련 변경점을 high priority로 분류해줘"
+              style="flex:1;font-family:var(--mono);font-size:12px;background:var(--surface);border:1px solid var(--b2);color:var(--text);padding:6px 9px;border-radius:4px;outline:none;resize:none;line-height:1.6;"
+              onkeydown="if(event.key==='Enter'&&(event.ctrlKey||event.metaKey))reAnalyzeImpact('algo')"></textarea>
+            <button class="btn-g btn" style="font-size:11px;padding:6px 13px;white-space:nowrap;flex-shrink:0;" onclick="reAnalyzeImpact('algo')">↺ 재분석</button>
+          </div>
+          <div style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-top:5px;">Ctrl+Enter로 실행 · 입력 내용은 유지됩니다</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 2: μArch docs — card mapping -->
+  <div class="view" id="view2">
+    <div style="display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid var(--border);flex-shrink:0;">
+      <div style="padding:8px 12px;border-right:1px solid var(--border);">
+        <div class="ph" style="padding:0 0 6px;border:none;">
+          <div class="pt"><div class="dot a"></div>AS-IS μArch 문서</div>
+          <button class="btn-g btn" style="font-size:12px;padding:4px 10px;" onclick="triggerFile('uaIn')">+ 파일</button>
+          <input type="file" id="uaIn" class="file-input" accept=".md,.txt" multiple>
+        </div>
+        <div class="dz" id="dzUA" style="margin:0;">
+          <p>📄 <span class="hi">클릭</span>하거나 드래그 &nbsp;·&nbsp; .md .txt</p>
+        </div>
+        <textarea id="uaText" placeholder="파일 없을 시 직접 입력" style="height:60px;border-top:1px solid var(--border);margin-top:6px;border-radius:4px;"></textarea>
+      </div>
+      <div style="padding:8px 12px;">
+        <div class="ph" style="padding:0 0 6px;border:none;">
+          <div class="pt"><div class="dot p"></div>TO-BE μArch 문서</div>
+          <button class="btn-g btn" style="font-size:12px;padding:4px 10px;" onclick="triggerFile('utIn')">+ 파일</button>
+          <input type="file" id="utIn" class="file-input" accept=".md,.txt" multiple>
+        </div>
+        <div class="dz" id="dzUT" style="margin:0;">
+          <p>📄 <span class="hi">클릭</span>하거나 드래그 &nbsp;·&nbsp; .md .txt</p>
+        </div>
+        <textarea id="utText" placeholder="파일 없을 시 직접 입력" style="height:60px;border-top:1px solid var(--border);margin-top:6px;border-radius:4px;"></textarea>
+      </div>
+    </div>
+    <div style="flex:1;overflow:hidden;display:flex;flex-direction:column;">
+      <div style="padding:6px 14px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0;">
+        <span style="font-family:var(--mono);font-size:10px;color:var(--text3);">AS-IS 카드를 클릭 → TO-BE 카드 클릭으로 연결 &nbsp;·&nbsp; 연결선 클릭 시 삭제</span>
+        <button class="btn-g btn" style="font-size:12px;padding:4px 12px;" onclick="autoMap('uarch')">자동 매핑</button>
+      </div>
+      <div style="flex:1;position:relative;overflow:hidden;" id="uarchMapArea">
+        <svg style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;" id="uarchSvg"></svg>
+        <div style="position:absolute;top:0;left:0;width:50%;height:100%;overflow-y:auto;padding:12px 8px 12px 14px;" id="uaCards"></div>
+        <div style="position:absolute;top:0;right:0;width:50%;height:100%;overflow-y:auto;padding:12px 14px 12px 8px;" id="utCards"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 3: μArch Diff (per-file tabs) -->
+  <div class="view" id="view3">
+    <div id="uarchDiffGrid" style="display:grid;grid-template-columns:1fr 5px 340px;flex:1;overflow:hidden;position:relative;">
+      <!-- 좌: LCS diff -->
+      <div class="diff-wrap" style="border-right:none;overflow:hidden;">
+        <div class="diff-tabs" id="udTabs"></div>
+        <div class="diff-block" id="udBlock"><div class="empty"><div class="ic">⊘</div><p>Step 3에서 파일을 추가하세요</p></div></div>
+        <div class="diff-footer" id="udFoot"></div>
+      </div>
+      <!-- 드래그 핸들 -->
+      <div class="split-handle" id="uarchHandle" onmousedown="startSplit(event,'uarchDiffGrid','uarchHandle')"></div>
+      <!-- 우: RTL 관련 변경점 요약 -->
+      <div style="display:flex;flex-direction:column;overflow:hidden;background:var(--surface);">
+        <div style="padding:7px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-shrink:0;">
+          <div class="pt"><div class="dot p"></div>RTL 관련 변경점</div>
+          <span id="udImpactCnt" style="font-family:var(--mono);font-size:11px;color:var(--text3);"></span>
+          <div style="margin-left:auto;display:flex;gap:4px;">
+            <button id="udUndoBtn" class="btn-g btn" style="font-size:11px;padding:4px 11px;" onclick="impactUndo('uarch')" disabled title="실행 취소">↩</button>
+            <button id="udRedoBtn" class="btn-g btn" style="font-size:11px;padding:4px 11px;" onclick="impactRedo('uarch')" disabled title="다시 실행">↪</button>
+            <button id="udAnalyzeBtn" class="btn-g btn" style="font-size:11px;padding:4px 13px;" onclick="reAnalyzeImpact('uarch')">AI 분석</button>
+          </div>
+        </div>
+        <div id="udImpact" style="flex:1;overflow-y:auto;padding:10px 12px;">
+          <div style="font-family:var(--mono);font-size:12px;color:var(--text3);line-height:1.7;">
+            AI 분석 버튼을 눌러 RTL 영향 변경점을 추출하세요<br>
+            <span style="color:var(--text3);font-size:11px;">하단 입력창에 추가 지시사항을 먼저 작성할 수 있습니다</span>
+          </div>
+        </div>
+        <div id="udImpactAdd" style="border-top:1px solid var(--border);padding:10px 12px;flex-shrink:0;background:var(--bg);">
+          <div style="font-family:var(--mono);font-size:11px;color:var(--text3);margin-bottom:6px;">
+            추가 지시사항 — 최초 분석 및 재분석 시 이 내용을 함께 반영합니다
+          </div>
+          <div style="display:flex;gap:6px;align-items:flex-start;">
+            <textarea id="udImpactInput" rows="2"
+              placeholder="예) pipeline stage 2→3 증가 관련 항목이 빠진 것 같아&#10;예) 버스 폭 변경을 별도 항목으로 분리해줘"
+              style="flex:1;font-family:var(--mono);font-size:12px;background:var(--surface);border:1px solid var(--b2);color:var(--text);padding:6px 9px;border-radius:4px;outline:none;resize:none;line-height:1.6;"
+              onkeydown="if(event.key==='Enter'&&(event.ctrlKey||event.metaKey))reAnalyzeImpact('uarch')"></textarea>
+            <button class="btn-g btn" style="font-size:11px;padding:6px 13px;white-space:nowrap;flex-shrink:0;" onclick="reAnalyzeImpact('uarch')">↺ 재분석</button>
+          </div>
+          <div style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-top:5px;">Ctrl+Enter로 실행 · 입력 내용은 유지됩니다</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 4: Summary -->
+  <div class="view" id="view4" style="overflow:hidden;">
+    <div class="sum-wrap" id="sumWrap" style="flex:1;overflow-y:auto;"><div class="empty"><div class="ic">⊘</div><p>이전 단계를 완료하세요</p></div></div>
+  </div>
+
+  <!-- Step 5: RTL Files -->
+  <div class="view active" id="view5">
+    <div class="dz" id="dzRTL" style="margin:8px;">
+      <p>📂 <span class="hi">클릭</span>하거나 .v / .sv 파일 드래그</p>
+      <p class="sub">여러 파일 동시 선택 가능</p>
+    </div>
+    <input type="file" id="rtlIn" class="file-input" accept=".v,.sv,.verilog" multiple>
+    <div style="padding:4px 13px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+      <span style="font-family:var(--mono);font-size:12px;color:var(--text3);" id="rtlCnt">파일 없음</span>
+      <button class="btn-g btn" style="font-size:12px;padding:4px 11px;" onclick="rtlFiles=[];renderRtl()">전체 삭제</button>
+    </div>
+    <div class="file-list" id="rtlList"></div>
+
+    <!-- 처리 모드 선택 -->
+    <div style="border-top:1px solid var(--border);padding:10px 14px;flex-shrink:0;background:var(--surface);">
+      <div style="font-family:var(--mono);font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">처리 모드</div>
+      <div style="display:flex;flex-direction:column;gap:6px;">
+
+        <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;padding:8px 10px;border-radius:6px;border:1.5px solid var(--accent);" id="modeCard-sequential" onclick="setMode('sequential')">
+          <input type="radio" name="convMode" value="sequential" checked style="margin-top:2px;accent-color:var(--accent);">
+          <div>
+            <div style="font-family:var(--mono);font-size:12px;font-weight:500;color:var(--text);">순차 처리 <span style="color:var(--green);font-size:12px;margin-left:6px;">대용량 권장</span></div>
+            <div style="font-family:var(--mono);font-size:11px;color:var(--text3);margin-top:3px;">파일 하나씩 처리. 앞 파일의 모듈 시그니처를 다음 파일 컨텍스트에 포함.</div>
+          </div>
+        </label>
+
+        <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;padding:8px 10px;border-radius:6px;border:1.5px solid var(--b2);" id="modeCard-single" onclick="setMode('single')">
+          <input type="radio" name="convMode" value="single" style="margin-top:2px;accent-color:var(--accent);">
+          <div>
+            <div style="font-family:var(--mono);font-size:12px;font-weight:500;color:var(--text);">단일 컨텍스트 <span style="color:var(--amber);font-size:12px;margin-left:6px;">소규모 권장</span></div>
+            <div style="font-family:var(--mono);font-size:11px;color:var(--text3);margin-top:3px;">모든 파일을 하나의 프롬프트에 포함. 파일 간 관계를 가장 정확히 파악.</div>
+          </div>
+        </label>
+
+      </div>
+
+      <!-- 컨텍스트 제어 옵션 -->
+      <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:8px;">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;">컨텍스트 제어</div>
+
+        <!-- 토큰 예산 -->
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-family:var(--mono);font-size:10px;color:var(--text2);white-space:nowrap;">파일당 토큰 예산</span>
+          <input id="tokenBudget" type="number" value="24000" min="2000" max="120000" step="1000"
+            style="width:90px;font-family:var(--mono);font-size:11px;background:var(--bg);border:1px solid var(--b2);color:var(--text);padding:3px 8px;border-radius:4px;outline:none;"
+            oninput="updateCtxEstimate()">
+          <span style="font-family:var(--mono);font-size:10px;color:var(--text3);">tokens — 초과 시 module 단위로 자동 분할</span>
+        </div>
+
+        <!-- 프롬프트 압축 -->
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+          <input type="checkbox" id="compressPrompt" checked style="accent-color:var(--accent);">
+          <span style="font-family:var(--mono);font-size:10px;color:var(--text2);">프롬프트 압축</span>
+          <span style="font-family:var(--mono);font-size:10px;color:var(--text3);">— Algorithm/μArch 원문 대신 diff 요약만 전달 (토큰 절약)</span>
+        </label>
+
+        <!-- 시그니처 전용 모드 -->
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+          <input type="checkbox" id="sigOnlyMode" style="accent-color:var(--accent);">
+          <span style="font-family:var(--mono);font-size:10px;color:var(--text2);">타 모듈 시그니처만 포함</span>
+          <span style="font-family:var(--mono);font-size:10px;color:var(--text3);">— 순차 처리 시 이전 파일 전체 대신 포트 선언만 전달</span>
+        </label>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 6: Results -->
+  <div class="view" id="view6" style="flex-direction:column;">
+    <!-- 진행 모니터링 패널 -->
+    <div id="monPanel" style="display:none;flex-shrink:0;border-bottom:1px solid var(--border);background:var(--surface);min-height:60px;overflow:hidden;">
+      <div style="padding:6px 14px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border);">
+        <span style="font-family:var(--mono);font-size:11px;color:var(--text2);font-weight:500;">진행 상황</span>
+        <span id="monStatus" style="font-family:var(--mono);font-size:11px;color:var(--amber);"></span>
+        <span id="monTokens" style="font-family:var(--mono);font-size:10px;color:var(--text3);"></span>
+        <div style="margin-left:auto;display:flex;gap:6px;">
+          <button id="resumeBtn" class="btn-g btn" style="font-size:10px;padding:4px 13px;display:none;" onclick="resumeBatch()">↺ 이어서 변환</button>
+          <button id="stopBtn"   class="btn-g btn" style="font-size:10px;padding:4px 13px;display:none;color:var(--red);border-color:rgba(255,107,117,.3);" onclick="stopBatch()">■ 중단</button>
+        </div>
+      </div>
+      <div id="monSteps" style="padding:8px 14px;display:flex;flex-direction:column;gap:5px;max-height:140px;overflow-y:auto;"></div>
+    </div>
+
+    <!-- monPanel ↔ resWrap 핸들 (monPanel 보일 때만 표시) -->
+    <div id="resHandleTop" class="split-handle-h" style="display:none;" onmousedown="startVSplit(event,'resHandleTop')"></div>
+
+    <div class="rtabs" id="resTabs"></div>
+    <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:80px;" id="resWrap">
+      <div class="empty"><div class="ic">⊘</div><p>변환 후 결과가 표시됩니다</p></div>
+    </div>
+
+    <!-- resWrap ↔ iterPanel 핸들 (iterPanel 보일 때만 표시) -->
+    <div id="resHandleBot" class="split-handle-h" style="display:none;" onmousedown="startVSplit(event,'resHandleBot')"></div>
+
+    <!-- 개선 지시 패널 -->
+    <div id="iterPanel" style="display:none;border-top:1px solid var(--border);background:var(--surface);flex-shrink:0;min-height:44px;overflow:hidden;">
+      <div style="padding:8px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;">
+        <span style="font-family:var(--mono);font-size:11px;font-weight:500;color:var(--text2);">개선 지시</span>
+        <span style="font-family:var(--mono);font-size:10px;color:var(--text3);">— LLM이 관련 파일을 자동 판단 후 수정합니다</span>
+        <button class="btn-g btn" style="font-size:10px;padding:4px 11px;margin-left:auto;" onclick="toggleIterPanel()">▼</button>
+      </div>
+      <div id="iterBody" style="padding:10px 14px;display:flex;flex-direction:column;gap:8px;overflow-y:auto;max-height:300px;">
+
+        <!-- 지시 입력 -->
+        <textarea id="iterPrompt" placeholder="예) alu.v의 multiply 결과 폭을 64비트로 수정해줘&#10;예) datapath.v에서 zero_flag 연결이 누락된 것 같아 확인해줘"
+          style="width:100%;height:60px;font-family:var(--mono);font-size:12px;background:var(--bg);color:var(--text);border:1px solid var(--b2);border-radius:5px;padding:7px 10px;resize:none;outline:none;line-height:1.6;"></textarea>
+
+        <!-- LLM 분석 결과 + 파일 선택 -->
+        <div style="display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap;">
+          <span style="font-family:var(--mono);font-size:11px;color:var(--text3);padding-top:3px;white-space:nowrap;">관련 파일</span>
+          <div id="iterFileList" style="display:flex;flex-wrap:wrap;gap:6px;flex:1;">
+            <span style="font-family:var(--mono);font-size:11px;color:var(--text3);">▶ 개선 실행 시 LLM이 자동 판단</span>
+          </div>
+          <button class="btn-g btn" style="font-size:10px;padding:4px 11px;white-space:nowrap;" onclick="selectAllIterFiles(true)">전체</button>
+          <button class="btn-g btn" style="font-size:10px;padding:4px 11px;white-space:nowrap;" onclick="selectAllIterFiles(false)">해제</button>
+        </div>
+
+        <!-- LLM 판단 근거 표시 영역 -->
+        <div id="iterReasoning" style="display:none;font-family:var(--mono);font-size:11px;color:var(--text3);background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:7px 10px;line-height:1.6;"></div>
+
+        <!-- 컨텍스트 예상 토큰 + 실행 -->
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <span id="iterTokenEst" style="font-family:var(--mono);font-size:11px;color:var(--text3);"></span>
+          <div style="margin-left:auto;display:flex;gap:6px;">
+            <button id="iterAnalyzeBtn" class="btn-g btn" style="font-size:11px;padding:4px 14px;" onclick="analyzeAndSelect()">🔍 파일 분석</button>
+            <button id="iterRunBtn" class="btn btn-p" style="font-size:11px;padding:4px 16px;" onclick="runIteration()">▶ 개선 실행</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Impact 미분석 경고 모달 -->
+<div id="impactWarnModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.65);align-items:center;justify-content:center;">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:28px 28px 22px;max-width:420px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.5);">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+      <span style="font-size:22px;">⚠️</span>
+      <span style="font-family:var(--mono);font-size:14px;font-weight:600;color:var(--amber);">AI 분석 미완료</span>
+    </div>
+    <div id="impactWarnMsg" style="font-family:var(--mono);font-size:12px;color:var(--text2);line-height:1.8;margin-bottom:20px;"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:nowrap;white-space:nowrap;">
+      <button class="btn btn-g" style="font-size:11px;padding:5px 12px;" onclick="document.getElementById('impactWarnModal').style.display='none'">취소</button>
+      <button class="btn btn-g" style="font-size:11px;padding:5px 12px;color:var(--amber);border-color:rgba(255,195,64,.3);" onclick="impactWarnGoAnalyze()">AI 분석 먼저</button>
+      <button class="btn btn-p" style="font-size:11px;padding:5px 12px;" onclick="impactWarnProceed()">그래도 진행</button>
+    </div>
+  </div>
+</div>
+
+<!-- 재변환 확인 모달 -->
+<div id="rerunConfirmModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.65);align-items:center;justify-content:center;">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:26px 28px 20px;max-width:400px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.5);">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+      <span style="font-size:22px;">🔄</span>
+      <span style="font-family:var(--mono);font-size:14px;font-weight:600;color:var(--text);">재변환 확인</span>
+    </div>
+    <div style="font-family:var(--mono);font-size:12px;color:var(--text2);line-height:1.8;margin-bottom:20px;">
+      모든 변환 결과와 개선 히스토리가 초기화되고<br>처음부터 다시 변환이 시작됩니다.<br>
+      <span style="color:var(--red);">이 작업은 되돌릴 수 없습니다.</span>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:nowrap;">
+      <button class="btn btn-g" style="font-size:11px;padding:5px 12px;" onclick="document.getElementById('rerunConfirmModal').style.display='none'">취소</button>
+      <button class="btn btn-p" style="font-size:11px;padding:5px 12px;background:var(--red);border-color:var(--red);" onclick="rerunConfirmed()">재변환 시작</button>
+    </div>
+  </div>
+</div>
+
+<div class="astrip">
+  <button class="btn btn-g" onclick="prevStep()" id="prevBtn" style="display:none;">← Back</button>
+  <button class="btn btn-p" onclick="nextAction()" id="nextBtn">다음: Algorithm →</button>
+  <div class="status" id="statusMsg"></div>
+</div>
+
+<div class="cfg">
+  <label title="Base URL — dev 서버 실행 시 .env에서 자동 로드">Base URL</label>
+  <input class="ch" id="oHost" type="text" value="" style="width:240px;" placeholder="http://your-llm-server/v1" title="LLM 서버 Base URL (.env의 BASE_URL로 자동 설정)">
+  <label title="API Key — dev 서버 실행 시 .env에서 자동 로드">API Key</label>
+  <input id="oApiKey" type="password" placeholder="sk-... (.env 자동 로드)" style="width:130px;font-family:var(--mono);font-size:11px;background:var(--surface);border:1px solid var(--b2);color:var(--text);padding:3px 8px;border-radius:4px;outline:none;" title="API Key (.env의 API_KEY로 자동 설정)">
+
+  <label>Model</label>
+  <!-- 텍스트 입력 (직접 입력용, 드롭다운 선택 시 동기화) -->
+  <input class="cm" id="oModel" type="text" value="" placeholder="model-name (.env 자동 로드)"
+    oninput="syncModelSelect(this.value)">
+  <!-- 연결 테스트 후 채워지는 드롭다운 -->
+  <select id="oModelSelect"
+    style="display:none;font-family:var(--mono);font-size:12px;background:var(--surface);border:1px solid var(--accent);color:var(--text);padding:3px 7px;border-radius:4px;outline:none;max-width:180px;"
+    onchange="document.getElementById('oModel').value=this.value">
+  </select>
+  <button class="pbtn" onclick="testConnection()" id="pingBtn"
+    style="white-space:nowrap;">연결 테스트</button>
+  <span id="ps" style="font-family:var(--mono);font-size:12px;color:var(--text2);">—</span>
+
+  <div style="width:1px;height:20px;background:var(--border);margin:0 6px;flex-shrink:0;"></div>
+  <label style="display:flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap;color:var(--green);font-family:var(--mono);font-size:12px;">
+    <input type="checkbox" id="autoParamChk" checked
+      style="accent-color:var(--green);width:14px;height:14px;"
+      onchange="onAutoParamChange()">
+    파라미터 자동
+  </label>
+  <span id="paramSummary" style="font-family:var(--mono);font-size:11px;color:var(--text3);white-space:nowrap;"></span>
+  <button class="pbtn" onclick="openParamPopup()"
+    style="font-size:11px;padding:3px 10px;color:var(--text2);border:1px solid var(--b2);">⚙ 파라미터</button>
+  <div style="width:1px;height:20px;background:var(--border);margin:0 6px;flex-shrink:0;"></div>
+  <span id="ctxEstimate" style="font-family:var(--mono);font-size:11px;"></span>
+  <button class="pbtn" onclick="downloadLlmLog()" style="margin-left:auto;color:var(--amber);border:1px solid rgba(245,184,64,.25);">로그 저장</button>
+</div>
+<!-- ── 파라미터 수동 설정 팝업 ────────────────────────── -->
+<div id="paramPopup" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.6);align-items:center;justify-content:center;">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;width:480px;box-shadow:0 20px 60px rgba(0,0,0,.5);overflow:hidden;">
+
+    <!-- 헤더 -->
+    <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--s2);">
+      <span style="font-family:var(--mono);font-size:13px;font-weight:600;color:var(--text);">⚙ LLM 파라미터 설정</span>
+      <button onclick="closeParamPopup()" style="background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer;line-height:1;">✕</button>
+    </div>
+
+    <!-- 호환성 안내 -->
+    <div style="padding:8px 16px;background:rgba(255,195,64,.07);border-bottom:1px solid var(--border);font-family:var(--mono);font-size:11px;color:var(--amber);line-height:1.6;">
+      ⚠ OpenAI Compatible 서버 기준 — 미체크 항목은 body에서 제외 (서버 기본값 사용)
+    </div>
+
+    <!-- 컬럼 헤더 -->
+    <div style="padding:6px 16px;background:var(--bg);border-bottom:1px solid var(--border);display:grid;grid-template-columns:1fr 80px 120px 90px;gap:6px;font-family:var(--mono);font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;">
+      <span>파라미터</span>
+      <span style="text-align:center;">사용</span>
+      <span style="text-align:center;">값 모드</span>
+      <span style="text-align:right;">값</span>
+    </div>
+
+    <!-- 파라미터 폼 -->
+    <div style="padding:8px 16px;display:flex;flex-direction:column;gap:2px;max-height:360px;overflow-y:auto;" id="paramForm">
+
+      <!-- temperature -->
+      <div class="pp-row" id="prow-temperature">
+        <div class="pp-info">
+          <span class="pp-name">temperature</span>
+          <span class="pp-desc">출력 다양성 (0=결정론적, RTL 권장)</span>
+        </div>
+        <label class="pp-use"><input type="checkbox" id="puse-temperature" checked onchange="onPParamUseChange('temperature')"></label>
+        <div class="pp-mode">
+          <select id="pmode-temperature" class="pp-sel" onchange="onPParamModeChange('temperature')">
+            <option value="auto">자동</option>
+            <option value="manual">수동</option>
+          </select>
+        </div>
+        <div class="pp-val">
+          <span id="pauto-temperature" class="pp-autoval">0</span>
+          <input id="pman-temperature" type="number" min="0" max="2" step="0.05" value="0" class="param-input" style="display:none;width:70px;" oninput="syncTempRange()">
+          <input id="prange-temperature" type="range" min="0" max="2" step="0.05" value="0" style="display:none;width:60px;accent-color:var(--accent);" oninput="document.getElementById('pman-temperature').value=parseFloat(this.value).toFixed(2)">
+        </div>
+      </div>
+
+      <!-- seed -->
+      <div class="pp-row" id="prow-seed">
+        <div class="pp-info">
+          <span class="pp-name">seed</span>
+          <span class="pp-desc">재현성 (-1=랜덤, 42=고정)</span>
+        </div>
+        <label class="pp-use"><input type="checkbox" id="puse-seed" checked onchange="onPParamUseChange('seed')"></label>
+        <div class="pp-mode">
+          <select id="pmode-seed" class="pp-sel" onchange="onPParamModeChange('seed')">
+            <option value="auto">자동</option>
+            <option value="manual">수동</option>
+          </select>
+        </div>
+        <div class="pp-val">
+          <span id="pauto-seed" class="pp-autoval">42</span>
+          <input id="pman-seed" type="number" min="-1" max="99999" step="1" value="42" class="param-input" style="display:none;width:80px;">
+        </div>
+      </div>
+
+      <!-- max_tokens -->
+      <div class="pp-row" id="prow-max_tokens">
+        <div class="pp-info">
+          <span class="pp-name">max_tokens</span>
+          <span class="pp-desc">출력 최대 길이 (미설정 시 서버 기본값)</span>
+        </div>
+        <label class="pp-use"><input type="checkbox" id="puse-max_tokens" checked onchange="onPParamUseChange('max_tokens')"></label>
+        <div class="pp-mode">
+          <select id="pmode-max_tokens" class="pp-sel" onchange="onPParamModeChange('max_tokens')">
+            <option value="auto">자동</option>
+            <option value="manual">수동</option>
+          </select>
+        </div>
+        <div class="pp-val">
+          <span id="pauto-max_tokens" class="pp-autoval">–</span>
+          <input id="pman-max_tokens" type="number" min="128" max="65536" step="256" value="8192" class="param-input" style="display:none;width:80px;">
+        </div>
+      </div>
+
+      <!-- top_p -->
+      <div class="pp-row" id="prow-top_p">
+        <div class="pp-info">
+          <span class="pp-name">top_p</span>
+          <span class="pp-desc">nucleus sampling (RTL=0.1, 분석=0.3)</span>
+        </div>
+        <label class="pp-use"><input type="checkbox" id="puse-top_p" checked onchange="onPParamUseChange('top_p')"></label>
+        <div class="pp-mode">
+          <select id="pmode-top_p" class="pp-sel" onchange="onPParamModeChange('top_p')">
+            <option value="auto">자동</option>
+            <option value="manual">수동</option>
+          </select>
+        </div>
+        <div class="pp-val">
+          <span id="pauto-top_p" class="pp-autoval">mode별</span>
+          <input id="pman-top_p" type="number" min="0" max="1" step="0.05" value="0.1" class="param-input" style="display:none;width:70px;">
+        </div>
+      </div>
+
+      <!-- num_ctx (OLLAMA_MODE 전용) -->
+      <div class="pp-row" id="prow-num_ctx" style="opacity:.5;">
+        <div class="pp-info">
+          <span class="pp-name">num_ctx <span style="font-size:10px;color:var(--amber);">[OLLAMA]</span></span>
+          <span class="pp-desc" style="color:var(--amber);">OLLAMA_MODE 전용 — .env OLLAMA_MODE=true 시 활성화</span>
+        </div>
+        <label class="pp-use"><input type="checkbox" id="puse-num_ctx" onchange="onPParamUseChange('num_ctx')"></label>
+        <div class="pp-mode">
+          <select id="pmode-num_ctx" class="pp-sel" disabled onchange="onPParamModeChange('num_ctx')">
+            <option value="auto">자동</option>
+            <option value="manual">수동</option>
+          </select>
+        </div>
+        <div class="pp-val">
+          <span id="pauto-num_ctx" class="pp-autoval">–</span>
+          <input id="pman-num_ctx" type="number" min="2048" max="262144" step="1024" value="32768" class="param-input" style="display:none;width:80px;">
+        </div>
+      </div>
+
+      <!-- Thinking buf (계산용, 전송 안 함) -->
+      <div class="pp-row" id="prow-thinking">
+        <div class="pp-info">
+          <span class="pp-name">Thinking buf</span>
+          <span class="pp-desc">추론 모델 thinking 예상 토큰 (계산용, 전송 안 함)</span>
+        </div>
+        <label class="pp-use"><input type="checkbox" id="puse-thinking" onchange="onPParamUseChange('thinking')"></label>
+        <div class="pp-mode">
+          <select id="pmode-thinking" class="pp-sel" disabled onchange="onPParamModeChange('thinking')">
+            <option value="manual">수동</option>
+          </select>
+        </div>
+        <div class="pp-val">
+          <span id="pauto-thinking" class="pp-autoval">–</span>
+          <input id="pman-thinking" type="number" min="0" max="65536" step="1024" value="0" class="param-input" style="display:none;width:80px;">
+        </div>
+      </div>
+
+    </div>
+
+    <!-- 하단 -->
+    <div style="padding:10px 16px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:space-between;align-items:center;background:var(--s2);">
+      <span style="font-family:var(--mono);font-size:10px;color:var(--text3);">자동값은 현재 단계·파일 크기 기반 실시간 계산</span>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-g" style="font-size:11px;padding:5px 14px;" onclick="closeParamPopup()">취소</button>
+        <button class="btn btn-p" style="font-size:11px;padding:5px 16px;" onclick="applyParamPopup()">적용</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="dbg-bar" onclick="toggleCon()">
+  <div class="dbg-title"><div class="dbg-ind" id="dbgI"></div>Console<span id="dbgN" style="color:var(--text3);margin-left:5px;"></span></div>
+  <button class="dbg-tog" id="dbgT">▼ 열기</button>
+</div>
+<div class="dbg-con" id="dbgC"></div>
+
+<script>
+// ── State ────────────────────────────────────────────────
+let cur=0;
+// File banks: [{name,content}]
+const banks={
+  ai:{files:[],active:0},  // algo as-is
+  at:{files:[],active:0},  // algo to-be
+  ua:{files:[],active:0},  // uarch as-is
+  ut:{files:[],active:0},  // uarch to-be
+};
+// Per-file diff active index
+let adActive=0, udActive=0;
+let rtlFiles=[]; // [{name,content,status,result,changes}]
+let resActive=0;
+let dbgOpen=false,dbgCnt=0;
+
+const LABELS=['다음: Algorithm →','다음: Algo Diff →','다음: μArch 문서 →','다음: μArch Diff →','다음: Summary →','▶ 일괄 변환 실행','▶ 재변환'];
+
+// ── Navigation ───────────────────────────────────────────
+// 스텝 순서: RTL(5) → Algorithm(0) → AlgoDiff(1) → μArchDocs(2) → μArchDiff(3) → Summary(4) → Results(6)
+const STEP_VIEW=[5,0,1,2,3,4,6];
+
+function goStep(n){
+  cur=n;
+  const vId=STEP_VIEW[n];
+  for(let i=0;i<7;i++){
+    const v=document.getElementById('view'+i);
+    const s=document.getElementById('s'+i);
+    if(v)v.style.display=i===vId?'flex':'none';
+    if(s){s.classList.toggle('active',i===n);if(i<n)s.classList.add('done');else s.classList.remove('done');}
+  }
+  document.getElementById('prevBtn').style.display=n>0?'':'none';
+  const nb=document.getElementById('nextBtn');
+  nb.style.display='';
+  nb.textContent=LABELS[Math.min(n,LABELS.length-1)];
+  try { refreshAutoParams(); } catch(e) { console.warn(e); }
+}
+function prevStep(){if(cur>0)goStep(cur-1);}
+function nextAction(){
+  if(cur===0)goStep(1);
+  else if(cur===1){buildAlgoDiffs();goStep(2);}
+  else if(cur===2)goStep(3);
+  else if(cur===3){buildUarchDiffs();goStep(4);}
+  else if(cur===4){buildSummary();goStep(5);}
+  else if(cur===5)runBatch();                    // Summary → 첫 변환
+  else if(cur===6){                              // Results → 재변환 확인
+    const hasResult = rtlFiles.some(f => f.result);
+    if (hasResult) {
+      document.getElementById('rerunConfirmModal').style.display = 'flex';
+    } else {
+      runBatch();
+    }
+  }
+}
+
+function rerunConfirmed() {
+  document.getElementById('rerunConfirmModal').style.display = 'none';
+  // 모든 결과 초기화
+  rtlFiles.forEach(f => { f.result = ''; f.changes = []; f.status = 'wait'; f.history = []; });
+  renderRtl(); renderResTabs();
+  runBatch();
+}
+
+// ── Helpers ──────────────────────────────────────────────
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');}
+function now(){const d=new Date();return`${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${String(d.getMilliseconds()).padStart(3,'0')}`;}
+function pad(n){return String(n).padStart(2,'0');}
+function triggerFile(id){document.getElementById(id).click();}
+
+// ── LCS diff ─────────────────────────────────────────────
+function lcs(a,b){
+  const m=a.length,n=b.length;
+  const dp=Array.from({length:m+1},()=>new Array(n+1).fill(0));
+  for(let i=1;i<=m;i++)for(let j=1;j<=n;j++)
+    dp[i][j]=a[i-1]===b[j-1]?dp[i-1][j-1]+1:Math.max(dp[i-1][j],dp[i][j-1]);
+  return dp;
+}
+function diffLines(a,b){
+  const dp=lcs(a,b);const r=[];let i=a.length,j=b.length;
+  while(i>0||j>0){
+    if(i>0&&j>0&&a[i-1]===b[j-1]){r.unshift({t:'s',x:a[i-1]});i--;j--;}
+    else if(j>0&&(i===0||dp[i][j-1]>=dp[i-1][j])){r.unshift({t:'a',x:b[j-1]});j--;}
+    else{r.unshift({t:'r',x:a[i-1]});i--;}
+  }
+  return r;
+}
+function renderDiff(textA,textB){
+  if(!textA&&!textB)return{html:'<div class="empty"><div class="ic">⊘</div><p>내용을 입력하세요</p></div>',adds:0,rems:0};
+  const d=diffLines((textA||'').split('\n'),(textB||'').split('\n'));
+  let adds=0,rems=0,html='';
+  d.forEach(x=>{
+    const e=esc(x.x);
+    if(x.t==='a'){html+=`<div class="dl add"><span class="gut">+</span>${e}</div>`;adds++;}
+    else if(x.t==='r'){html+=`<div class="dl rem"><span class="gut">-</span>${e}</div>`;rems++;}
+    else html+=`<div class="dl sam"><span class="gut"> </span>${e}</div>`;
+  });
+  return{html,adds,rems};
+}
+function getDiffItems(a,b){
+  if(!a&&!b)return[];
+  return diffLines((a||'').split('\n'),(b||'').split('\n'))
+    .filter(x=>x.t!=='s'&&x.x.trim()).slice(0,40)
+    .map(x=>({t:x.t==='a'?'add':'rem',x:x.x.trim()}));
+}
+
+// ── File bank + card mapping ──────────────────────────────
+// banks[key].files: [{name, content}]
+// mappings.algo / mappings.uarch: [{asIdx, toIdx}]
+const mappings = { algo: [], uarch: [] };
+
+// 매핑 상태 (클릭 연결용)
+const mapState = {
+  algo:  { pending: null },  // pending: {side:'as'|'to', idx}
+  uarch: { pending: null },
+};
+
+const MK_CFG = {
+  algo:  { asKey:'ai', toKey:'at', areaId:'algoMapArea',  svgId:'algoSvg',  asCardsId:'aiCards', toCardsId:'atCards' },
+  uarch: { asKey:'ua', toKey:'ut', areaId:'uarchMapArea', svgId:'uarchSvg', asCardsId:'uaCards', toCardsId:'utCards' },
+};
+
+function addFiles(key, files) {
+  files.forEach(f => {
+    if (banks[key].files.find(x => x.name === f.name)) return;
+    const r = new FileReader();
+    r.onload = e => {
+      banks[key].files.push({name: f.name, content: e.target.result});
+      const mk = (key==='ai'||key==='at') ? 'algo' : 'uarch';
+      renderCards(mk);
+      updateBadge();
+    };
+    r.readAsText(f);
+  });
+}
+
+function removeFile(key, idx) {
+  banks[key].files.splice(idx, 1);
+  const mk = (key==='ai'||key==='at') ? 'algo' : 'uarch';
+  const side = (key==='ai'||key==='ua') ? 'as' : 'to';
+  const idxKey = side==='as' ? 'asIdx' : 'toIdx';
+  mappings[mk] = mappings[mk]
+    .filter(m => m[idxKey] !== idx)
+    .map(m => ({...m, [idxKey]: m[idxKey]>idx ? m[idxKey]-1 : m[idxKey]}));
+  mapState[mk].pending = null;
+  renderCards(mk);
+  updateBadge();
+}
+
+// ── Card render ───────────────────────────────────────────
+function renderCards(mk) {
+  const cfg = MK_CFG[mk];
+  const asFiles = banks[cfg.asKey].files;
+  const toFiles = banks[cfg.toKey].files;
+
+  // overlay svg 초기화 (drawArrows에서 처리)
+  const oldOverlay = document.getElementById(`${mk}-hit-svg`);
+  if (oldOverlay) oldOverlay.remove();
+
+  const matchedAs = new Set(mappings[mk].map(m => m.asIdx));
+  const matchedTo = new Set(mappings[mk].map(m => m.toIdx));
+  const pending = mapState[mk].pending;
+
+  // AS-IS cards
+  const asEl = document.getElementById(cfg.asCardsId);
+  asEl.innerHTML = `<div class="col-label">AS-IS (${asFiles.length})</div>` +
+    (asFiles.length === 0
+      ? '<div style="font-family:var(--mono);font-size:11px;color:var(--text3);padding:8px 0;">파일을 추가하세요</div>'
+      : asFiles.map((f, i) => {
+          const isMatched = matchedAs.has(i);
+          const isSel = pending && pending.side==='as' && pending.idx===i;
+          return `<div class="fcard ${isMatched?'matched':''} ${isSel?'selected':''}"
+            id="${mk}-as-${i}" onclick="cardClick('${mk}','as',${i})">
+            ${isMatched ? `<span class="fcard-badge">연결됨</span>` : ''}
+            <button class="fcard-del" onclick="event.stopPropagation();removeFile('${cfg.asKey}',${i})" title="삭제">✕</button>
+            <div class="fcard-name" title="${esc(f.name)}">${esc(f.name)}</div>
+            <div class="fcard-meta">${(f.content.length/1024).toFixed(1)} KB</div>
+          </div>`;
+        }).join(''));
+
+  // TO-BE cards
+  const toEl = document.getElementById(cfg.toCardsId);
+  toEl.innerHTML = `<div class="col-label">TO-BE (${toFiles.length})</div>` +
+    (toFiles.length === 0
+      ? '<div style="font-family:var(--mono);font-size:11px;color:var(--text3);padding:8px 0;">파일을 추가하세요</div>'
+      : toFiles.map((f, i) => {
+          const isMatched = matchedTo.has(i);
+          const isSel = pending && pending.side==='to' && pending.idx===i;
+          return `<div class="fcard ${isMatched?'matched':''} ${isSel?'selected':''}"
+            id="${mk}-to-${i}" onclick="cardClick('${mk}','to',${i})">
+            ${isMatched ? `<span class="fcard-badge">연결됨</span>` : ''}
+            <button class="fcard-del" onclick="event.stopPropagation();removeFile('${cfg.toKey}',${i})" title="삭제">✕</button>
+            <div class="fcard-name" title="${esc(f.name)}">${esc(f.name)}</div>
+            <div class="fcard-meta">${(f.content.length/1024).toFixed(1)} KB</div>
+          </div>`;
+        }).join(''));
+
+  // Draw arrows after DOM update
+  requestAnimationFrame(() => drawArrows(mk));
+}
+
+// ── Card click logic ──────────────────────────────────────
+function cardClick(mk, side, idx) {
+  const st = mapState[mk];
+  console.log('[cardClick]', mk, side, idx, 'pending:', JSON.stringify(st.pending), 'mappings:', JSON.stringify(mappings[mk]));
+
+  if (!st.pending) {
+    st.pending = {side, idx};
+    updateCardStyles(mk);
+    return;
+  }
+
+  if (st.pending.side === side) {
+    st.pending = {side, idx};
+    updateCardStyles(mk);
+    return;
+  }
+
+  const asIdx = side === 'to' ? st.pending.idx : idx;
+  const toIdx = side === 'to' ? idx : st.pending.idx;
+
+  console.log('[cardClick] creating pair asIdx:', asIdx, 'toIdx:', toIdx);
+  mappings[mk] = mappings[mk].filter(m => m.asIdx !== asIdx && m.toIdx !== toIdx);
+  mappings[mk].push({asIdx, toIdx});
+  console.log('[cardClick] mappings after push:', JSON.stringify(mappings[mk]));
+
+  st.pending = null;
+  updateCardStyles(mk);
+  requestAnimationFrame(() => drawArrows(mk));
+}
+
+// 카드 DOM 재생성 없이 스타일만 업데이트
+function updateCardStyles(mk) {
+  const cfg = MK_CFG[mk];
+  const asFiles = banks[cfg.asKey].files;
+  const toFiles = banks[cfg.toKey].files;
+  const matchedAs = new Set(mappings[mk].map(m => m.asIdx));
+  const matchedTo = new Set(mappings[mk].map(m => m.toIdx));
+  const pending = mapState[mk].pending;
+
+  asFiles.forEach((_, i) => {
+    const el = document.getElementById(`${mk}-as-${i}`);
+    if (!el) return;
+    el.className = 'fcard'
+      + (matchedAs.has(i) ? ' matched' : '')
+      + (pending && pending.side==='as' && pending.idx===i ? ' selected' : '');
+    const badge = el.querySelector('.fcard-badge');
+    if (matchedAs.has(i) && !badge) {
+      el.insertAdjacentHTML('afterbegin', '<span class="fcard-badge">연결됨</span>');
+    } else if (!matchedAs.has(i) && badge) {
+      badge.remove();
+    }
+  });
+
+  toFiles.forEach((_, i) => {
+    const el = document.getElementById(`${mk}-to-${i}`);
+    if (!el) return;
+    el.className = 'fcard'
+      + (matchedTo.has(i) ? ' matched' : '')
+      + (pending && pending.side==='to' && pending.idx===i ? ' selected' : '');
+    const badge = el.querySelector('.fcard-badge');
+    if (matchedTo.has(i) && !badge) {
+      el.insertAdjacentHTML('afterbegin', '<span class="fcard-badge">연결됨</span>');
+    } else if (!matchedTo.has(i) && badge) {
+      badge.remove();
+    }
+  });
+}
+
+// ── SVG arrow drawing ─────────────────────────────────────
+function drawArrows(mk) {
+  const cfg = MK_CFG[mk];
+  const svg = document.getElementById(cfg.svgId);
+  const area = document.getElementById(cfg.areaId);
+
+  // 보이는 선만 SVG에 그림 (pointer-events:none 유지)
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+  // 이전 overlay 완전 제거
+  const old = document.getElementById(`${mk}-hit-svg`);
+  if (old) old.remove();
+
+  if (mappings[mk].length === 0) return;
+
+  const areaRect = area.getBoundingClientRect();
+
+  // 각 쌍의 베지어 경로 저장 (히트 테스트용)
+  const lineData = [];
+
+  mappings[mk].forEach(({asIdx, toIdx}, lineIdx) => {
+    const asCard = document.getElementById(`${mk}-as-${asIdx}`);
+    const toCard = document.getElementById(`${mk}-to-${toIdx}`);
+    if (!asCard || !toCard) return;
+
+    const ar = asCard.getBoundingClientRect();
+    const tr = toCard.getBoundingClientRect();
+
+    const x1 = ar.right - areaRect.left;
+    const y1 = ar.top   - areaRect.top + ar.height / 2;
+    const x2 = tr.left  - areaRect.left;
+    const y2 = tr.top   - areaRect.top + tr.height / 2;
+    const cx = (x1 + x2) / 2;
+    const d  = `M${x1},${y1} C${cx},${y1} ${cx},${y2} ${x2},${y2}`;
+
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    line.setAttribute('d', d);
+    line.setAttribute('class', 'map-line');
+    line.setAttribute('fill', 'none');
+    line.id = `${mk}-line-${lineIdx}`;
+    svg.appendChild(line);
+
+    lineData.push({lineIdx, x1, y1, x2, y2, cx, line});
+  });
+
+  // area에 mousemove/click 핸들러 등록 (기존 것 교체)
+  const moveKey = `_mm_${mk}`;
+  const clickKey = `_cl_${mk}`;
+  if (area[moveKey]) area.removeEventListener('mousemove', area[moveKey]);
+  if (area[clickKey]) area.removeEventListener('click', area[clickKey]);
+
+  function ptOnCurve(t, x1, y1, cx, y2, x2, _y2) {
+    // 베지어 점 계산 (t: 0~1)
+    const bx = x1*(1-t)**3 + 3*cx*(1-t)**2*t + 3*cx*(1-t)*t**2 + x2*t**3;
+    const by = y1*(1-t)**3 + 3*y1*(1-t)**2*t + 3*y2*(1-t)*t**2 + _y2*t**3;
+    return {bx, by};
+  }
+
+  function distToCurve(mx, my, ld) {
+    let minD = Infinity;
+    for (let t = 0; t <= 1; t += 0.02) {
+      const {bx, by} = ptOnCurve(t, ld.x1, ld.y1, ld.cx, ld.y1, ld.x2, ld.y2);
+      const d = Math.hypot(mx - bx, my - by);
+      if (d < minD) minD = d;
+    }
+    return minD;
+  }
+
+  let hoveredIdx = -1;
+
+  area[moveKey] = (e) => {
+    const r = area.getBoundingClientRect();
+    const mx = e.clientX - r.left;
+    const my = e.clientY - r.top;
+    let newHover = -1;
+    lineData.forEach(ld => {
+      if (distToCurve(mx, my, ld) < 8) newHover = ld.lineIdx;
+    });
+    if (newHover !== hoveredIdx) {
+      lineData.forEach(ld => {
+        ld.line.style.stroke = '';
+        ld.line.style.strokeWidth = '';
+        ld.line.style.opacity = '';
+      });
+      if (newHover >= 0) {
+        const hl = lineData.find(l => l.lineIdx === newHover);
+        if (hl) {
+          hl.line.style.stroke = '#ff5f6b';
+          hl.line.style.strokeWidth = '2.5';
+          hl.line.style.opacity = '1';
+        }
+        area.style.cursor = 'pointer';
+      } else {
+        area.style.cursor = '';
+      }
+      hoveredIdx = newHover;
+    }
+  };
+
+  area[clickKey] = (e) => {
+    if (hoveredIdx < 0) return;
+    e.stopPropagation();
+    removeLine(mk, hoveredIdx);
+  };
+
+  area.addEventListener('mousemove', area[moveKey]);
+  area.addEventListener('click', area[clickKey]);
+}
+
+function removeLine(mk, lineIdx) {
+  mappings[mk].splice(lineIdx, 1);
+  renderCards(mk);
+}
+
+// ── Auto map ──────────────────────────────────────────────
+function autoMap(mk) {
+  const cfg = MK_CFG[mk];
+  const asFiles = banks[cfg.asKey].files;
+  const toFiles = banks[cfg.toKey].files;
+  mappings[mk] = [];
+  const usedTo = new Set();
+  asFiles.forEach((af, asIdx) => {
+    let bestIdx = -1, bestScore = -1;
+    toFiles.forEach((tf, toIdx) => {
+      if (usedTo.has(toIdx)) return;
+      const s = similarity(af.name, tf.name);
+      if (s > bestScore) { bestScore = s; bestIdx = toIdx; }
+    });
+    if (bestIdx >= 0) { mappings[mk].push({asIdx, toIdx: bestIdx}); usedTo.add(bestIdx); }
+  });
+  mapState[mk].pending = null;
+  renderCards(mk);
+}
+
+function similarity(a, b) {
+  const s1 = a.toLowerCase().replace(/\.\w+$/,'');
+  const s2 = b.toLowerCase().replace(/\.\w+$/,'');
+  let common = 0;
+  for (const c of s1) if (s2.includes(c)) common++;
+  return common / Math.max(s1.length, s2.length, 1);
+}
+
+// ── renderBank (for RTL list only now) ───────────────────
+function renderBank(key) {
+  // Only used for RTL list; algo/uarch use renderCards
+}
+
+// ── getText / getMappedPairs ──────────────────────────────
+function getText(key) {
+  const bank = banks[key];
+  const textId = {ai:'aiText',at:'atText',ua:'uaText',ut:'utText'}[key];
+  if (bank.files.length === 0) return document.getElementById(textId).value.trim();
+  return bank.files.map(f => `# === ${f.name} ===\n${f.content}`).join('\n\n');
+}
+
+function getMappedPairs(mk) {
+  const cfg = MK_CFG[mk];
+  const asFiles = banks[cfg.asKey].files;
+  const toFiles = banks[cfg.toKey].files;
+  const asTextId = mk==='algo' ? 'aiText' : 'uaText';
+  const toTextId = mk==='algo' ? 'atText' : 'utText';
+  const asText = document.getElementById(asTextId).value.trim();
+  const toText = document.getElementById(toTextId).value.trim();
+
+  // 파일 없음: textarea
+  if (asFiles.length===0 && toFiles.length===0) {
+    if (!asText && !toText) return [];
+    return [{label:'직접 입력', a:asText, b:toText}];
+  }
+  // 매핑 기반
+  if (mappings[mk].length > 0) {
+    return mappings[mk].map(({asIdx, toIdx}) => ({
+      label: `${asFiles[asIdx]?.name||'?'} ↔ ${toFiles[toIdx]?.name||'?'}`,
+      a: asFiles[asIdx]?.content || '',
+      b: toFiles[toIdx]?.content || '',
+    }));
+  }
+  // fallback: 순서 매칭
+  const len = Math.max(asFiles.length, toFiles.length);
+  return Array.from({length:len}, (_,i) => ({
+    label: asFiles[i]?.name || toFiles[i]?.name || `pair ${i+1}`,
+    a: asFiles[i]?.content || '',
+    b: toFiles[i]?.content || '',
+  }));
+}
+
+
+// ── Algo diff (per-pair tabs) ─────────────────────────────
+let algoPairs = [];
+function buildAlgoDiffs() {
+  algoPairs = getMappedPairs('algo');
+  adActive = 0;
+  renderDiffTabs('adTabs', algoPairs, adActive, i => { adActive=i; showAlgoDiff(); });
+  showAlgoDiff();
+}
+function showAlgoDiff() {
+  if (!algoPairs.length) {
+    document.getElementById('adBlock').innerHTML='<div class="empty"><div class="ic">⊘</div><p>파일 또는 텍스트를 입력하세요</p></div>';
+    document.getElementById('adFoot').textContent='';
+    return;
+  }
+  const p = algoPairs[adActive];
+  const {html, adds, rems} = renderDiff(p.a, p.b);
+  document.getElementById('adBlock').innerHTML = html;
+  document.getElementById('adFoot').textContent = `${p.label}  |  +${adds} / -${rems}`;
+  renderDiffTabs('adTabs', algoPairs, adActive, i => { adActive=i; showAlgoDiff(); });
+}
+
+// ── μArch diff (per-pair tabs) ────────────────────────────
+let uarchPairs = [];
+function buildUarchDiffs() {
+  uarchPairs = getMappedPairs('uarch');
+  udActive = 0;
+  renderDiffTabs('udTabs', uarchPairs, udActive, i => { udActive=i; showUarchDiff(); });
+  showUarchDiff();
+}
+function showUarchDiff() {
+  if (!uarchPairs.length) {
+    document.getElementById('udBlock').innerHTML='<div class="empty"><div class="ic">⊘</div><p>파일 또는 텍스트를 입력하세요</p></div>';
+    document.getElementById('udFoot').textContent='';
+    return;
+  }
+  const p = uarchPairs[udActive];
+  const {html, adds, rems} = renderDiff(p.a, p.b);
+  document.getElementById('udBlock').innerHTML = html;
+  document.getElementById('udFoot').textContent = `${p.label}  |  +${adds} / -${rems}`;
+  renderDiffTabs('udTabs', uarchPairs, udActive, i => { udActive=i; showUarchDiff(); });
+}
+
+function renderDiffTabs(elId, pairs, active, onClick) {
+  document.getElementById(elId).innerHTML = pairs.map((p,i) =>
+    `<button class="dtab ${i===active?'active':''}" onclick="(${onClick.toString()})(${i})">${esc(p.label)}</button>`
+  ).join('');
+}
+
+
+// ── Summary ──────────────────────────────────────────────
+function buildSummary(){
+  const asText=getText('ai'),toText=getText('at');
+  const uaText=getText('ua'),utText=getText('ut');
+  const ai=getDiffItems(asText,toText);
+  const ui=getDiffItems(uaText,utText);
+
+  const algoFiles=Math.max(banks.ai.files.length,banks.at.files.length);
+  const uaFiles=Math.max(banks.ua.files.length,banks.ut.files.length);
+
+  // impact 데이터 기반 렌더링 (있으면 우선, 없으면 LCS diff)
+  const mkImpactRows = (mk, fallbackItems, isUa) => {
+    const data = _impactData[mk];
+    if (data?.items?.length) {
+      const priorityOrder = { high: 0, med: 1, low: 2 };
+      const sorted = [...data.items].sort((a,b) =>
+        (priorityOrder[a.priority]??2) - (priorityOrder[b.priority]??2)
+      );
+      return `<div style="font-family:var(--mono);font-size:10px;color:var(--green);margin-bottom:6px;">
+        ✓ AI 분석 + 사용자 검토 완료 — ${sorted.length}개 항목이 변환 프롬프트에 적용됩니다
+        ${data.summary ? `<br><span style="color:var(--text2);">${esc(data.summary)}</span>` : ''}
+      </div>` +
+      sorted.map(item => {
+        const priCls = item.priority === 'high' ? 'rem' : item.priority === 'med' ? 'mod' : 'add';
+        const catLbl = (item.category || 'logic').toUpperCase();
+        const userBadge = item._userAdded ? `<span class="pill ua">USER</span>` : '';
+        return `<div class="si">
+          <span class="pill ${priCls}">${catLbl}</span>${userBadge}
+          <div><p>${esc(item.change)}</p>
+          <p style="font-size:11px;color:var(--text3);margin-top:2px;">▸ ${esc(item.rtl_impact)}</p></div>
+        </div>`;
+      }).join('');
+    }
+    // fallback: LCS diff
+    return fallbackItems.length
+      ? fallbackItems.map(i=>`<div class="si"><span class="pill ${i.t}">${i.t.toUpperCase()}</span>${isUa?'<span class="pill ua">μARCH</span>':''}<p>${esc(i.x)}</p></div>`).join('')
+      : '<div class="no-ch">변경 없음</div>';
+  };
+
+  const algoHeader = _impactData.algo?.items?.length
+    ? `Algorithm RTL 영향 (${_impactData.algo.items.length}건 · AI 검토됨) — ${algoFiles}개 파일`
+    : `Algorithm 변경 (${ai.length}) — ${algoFiles}개 파일`;
+  const uaHeader = _impactData.uarch?.items?.length
+    ? `μArch RTL 영향 (${_impactData.uarch.items.length}건 · AI 검토됨) — ${uaFiles}개 파일`
+    : `μArch 변경 (${ui.length}) — ${uaFiles}개 파일`;
+
+  document.getElementById('sumWrap').innerHTML=`
+    <div class="scard">
+      <div class="sch"><div class="dot b"></div>${algoHeader}</div>
+      <div class="scb">${mkImpactRows('algo', ai, false)}</div>
+    </div>
+    <div class="scard">
+      <div class="sch"><div class="dot p"></div>${uaHeader}</div>
+      <div class="scb">${mkImpactRows('uarch', ui, true)}</div>
+    </div>
+    <div class="scard" style="border-color:rgba(79,158,255,.25);">
+      <div class="sch" style="color:var(--accent);"><div class="dot b"></div>RTL 변환 대상 (${rtlFiles.length}개)</div>
+      <div class="scb">${rtlFiles.length
+        ?rtlFiles.map(f=>`<div class="si"><span class="pill mod">RTL</span><p>${esc(f.name)}</p></div>`).join('')
+        :'<div class="no-ch">RTL 파일 없음 — Step 6에서 추가하세요</div>'}</div>
+    </div>`;
+}
+
+// ── RTL files ────────────────────────────────────────────
+function addRtlFiles(files){
+  files.forEach(f=>{
+    if(!/\.(v|sv|verilog)$/i.test(f.name))return;
+    if(rtlFiles.find(x=>x.name===f.name))return;
+    const r=new FileReader();
+    r.onload=e=>{rtlFiles.push({name:f.name,content:e.target.result,status:'wait',result:'',changes:[]});renderRtl();updateBadge();};
+    r.readAsText(f);
+  });
+}
+function removeRtl(i){rtlFiles.splice(i,1);renderRtl();updateBadge();}
+function renderRtl(){
+  document.getElementById('rtlCnt').textContent=`${rtlFiles.length}개 파일`;
+  const list=document.getElementById('rtlList');
+  if(!list) return;
+  if(!rtlFiles.length){
+    list.innerHTML='<div class="empty" style="padding:22px 0;"><div class="ic">📂</div><p>파일을 추가하세요</p></div>';
+  } else {
+    list.innerHTML=rtlFiles.map((f,i)=>{
+      const sc={wait:'fs-w',run:'fs-r',ok:'fs-o',err:'fs-e'}[f.status]||'fs-w';
+      const st={wait:'대기',run:'변환중',ok:'완료',err:'오류'}[f.status]||'대기';
+      return`<div class="frow"><span class="fname" title="${esc(f.name)}">${esc(f.name)}</span><span class="fsz">${(f.content.length/1024).toFixed(1)}KB</span><span class="fst ${sc}">${st}</span><button class="dbtn" onclick="removeRtl(${i})">✕</button></div>`;
+    }).join('');
+  }
+  // 목록 렌더 완료 후 파라미터/토큰 추정 갱신 (에러가 나도 목록은 보임)
+  try { refreshAutoParams(); } catch(e) { console.warn('[renderRtl] refreshAutoParams error:', e); }
+}
+
+function updateBadge(){
+  const a=Math.max(banks.ai.files.length,banks.at.files.length);
+  const u=Math.max(banks.ua.files.length,banks.ut.files.length);
+  document.getElementById('hBadge').textContent=`algo ${a} · μarch ${u} · rtl ${rtlFiles.length}`;
+}
+
+// ── Conversion mode ───────────────────────────────────────
+let convMode = 'sequential';
+
+function setMode(m) {
+  convMode = m;
+  ['sequential','single'].forEach(k => {
+    const card = document.getElementById(`modeCard-${k}`);
+    if (card) card.style.borderColor = k===m ? 'var(--accent)' : 'var(--b2)';
+  });
+  try { refreshAutoParams(); } catch(e) { console.warn(e); }
+}
+
+function autoCalcNumCtx() {
+  // ── RTL 파일 기반 계산 ───────────────────────────────────
+  const fileToks   = rtlFiles.length ? rtlFiles.map(f => estimateTokens(f.content)) : [0];
+  const maxFileTok = Math.max(...fileToks);
+  const sumFileTok = fileToks.reduce((a, b) => a + b, 0);
+
+  // ── 문서 기반 계산 (Algo / μArch diff 단계) ──────────────
+  const algoAsTok  = estimateTokens(getText('ai'));
+  const algoToTok  = estimateTokens(getText('at'));
+  const uarchAsTok = estimateTokens(getText('ua'));
+  const uarchToTok = estimateTokens(getText('ut'));
+  const algoDocTok  = algoAsTok  + algoToTok;
+  const uarchDocTok = uarchAsTok + uarchToTok;
+
+  // ── impact 오버헤드 + thinking 버퍼 ──────────────────────
+  const impactN      = (_impactData.algo?.items?.length  || 0) +
+                       (_impactData.uarch?.items?.length || 0);
+  const impactTok    = 200 + impactN * 120;
+  const thinkingBuf  = getThinkingBuf();
+
+  // ── 필요 토큰 계산 (입력+출력 × margin + thinking) ───────
+  // RTL 변환: 순차(최대 1파일) / 단일(전체 합산)
+  const reqSeq    = Math.ceil((maxFileTok + impactTok) * 2 * 1.3) + thinkingBuf;
+  const reqSingle = Math.ceil((sumFileTok  + impactTok) * 2 * 1.3) + thinkingBuf;
+  // Algo diff 분석
+  const reqAlgo   = Math.ceil((algoDocTok  + 300) * 1.5 * 1.3) + thinkingBuf;
+  // μArch diff 분석
+  const reqUarch  = Math.ceil((uarchDocTok + 300) * 1.5 * 1.3) + thinkingBuf;
+
+  const steps = [8192, 16384, 32768, 65536, 131072];
+  const snap  = v => steps.find(s => s >= v) || 131072;
+
+  return {
+    maxFileTok, sumFileTok, impactTok, thinkingBuf,
+    algoAsTok, algoToTok, algoDocTok,
+    uarchAsTok, uarchToTok, uarchDocTok,
+    reqSeq,    recSeq:    snap(reqSeq),
+    reqSingle, recSingle: snap(reqSingle),
+    reqAlgo,   recAlgo:   snap(reqAlgo),
+    reqUarch,  recUarch:  snap(reqUarch),
+    fileCount: rtlFiles.length
+  };
+}
+
+function applyAutoNumCtx() {
+  const calc = autoCalcNumCtx();
+  const isSingle = convMode === 'single';
+
+  // 현재 스텝에 맞는 권장값 선택
+  let rec, basis, reqTok;
+  if (cur === 2) {
+    // Algo Diff 단계
+    rec = calc.recAlgo; reqTok = calc.reqAlgo;
+    basis = `Algo 문서 AS(${calc.algoAsTok.toLocaleString()})+TO(${calc.algoToTok.toLocaleString()}) ~${calc.algoDocTok.toLocaleString()}tok`;
+  } else if (cur === 4) {
+    // μArch Diff 단계
+    rec = calc.recUarch; reqTok = calc.reqUarch;
+    basis = `μArch 문서 AS(${calc.uarchAsTok.toLocaleString()})+TO(${calc.uarchToTok.toLocaleString()}) ~${calc.uarchDocTok.toLocaleString()}tok`;
+  } else {
+    // RTL 변환 단계 (Summary, Results)
+    rec = isSingle ? calc.recSingle : calc.recSeq;
+    reqTok = isSingle ? calc.reqSingle : calc.reqSeq;
+    basis = isSingle
+      ? `RTL 전체합산 ~${calc.sumFileTok.toLocaleString()}tok`
+      : `RTL 최대파일 ~${calc.maxFileTok.toLocaleString()}tok`;
+  }
+
+  _params.oNumCtx = rec;
+  updateParamSummary();
+  dbgLog('INF', `[auto num_ctx] ${basis} + impact ~${calc.impactTok}tok → 필요 ~${reqTok.toLocaleString()}tok → ${rec.toLocaleString()} 설정`, 'inf');
+  updateCtxEstimate();
+}
+
+function updateCtxEstimate() {
+  const el = document.getElementById('ctxEstimate');
+  if (!el) return;
+
+  const calc     = autoCalcNumCtx();
+  const current  = (_pset.num_ctx?.use ? _pset.num_ctx.val : null) || _params.oNumCtx || 32768;
+  const isSingle = convMode === 'single';
+
+  // ── 현재 스텝에 맞는 계산 기준 선택 ─────────────────────
+  let usedTok, rawRequired, recTok, modeTag, baseLabel;
+
+  if (cur === 2 && calc.algoDocTok > 0) {
+    usedTok     = calc.algoDocTok;
+    rawRequired = (usedTok + 300) * 1.5 + calc.thinkingBuf;
+    recTok      = calc.recAlgo;
+    modeTag     = `<span style="color:var(--amber);font-size:10px;">[Algo Diff]</span>`;
+    baseLabel   = `AS(${calc.algoAsTok.toLocaleString()}) + TO(${calc.algoToTok.toLocaleString()}) = ~${calc.algoDocTok.toLocaleString()} tok`;
+  } else if (cur === 4 && calc.uarchDocTok > 0) {
+    usedTok     = calc.uarchDocTok;
+    rawRequired = (usedTok + 300) * 1.5 + calc.thinkingBuf;
+    recTok      = calc.recUarch;
+    modeTag     = `<span style="color:var(--purple);font-size:10px;">[μArch Diff]</span>`;
+    baseLabel   = `AS(${calc.uarchAsTok.toLocaleString()}) + TO(${calc.uarchToTok.toLocaleString()}) = ~${calc.uarchDocTok.toLocaleString()} tok`;
+  } else if (rtlFiles.length) {
+    usedTok     = isSingle ? calc.sumFileTok : calc.maxFileTok;
+    rawRequired = (usedTok + calc.impactTok) * 2 + calc.thinkingBuf;
+    recTok      = isSingle ? calc.recSingle : calc.recSeq;
+    modeTag     = isSingle
+      ? `<span style="color:var(--purple);font-size:10px;">[단일]</span>`
+      : `<span style="color:var(--accent);font-size:10px;">[순차]</span>`;
+    baseLabel   = isSingle
+      ? `전체 ${calc.fileCount}개 합산 ~${calc.sumFileTok.toLocaleString()} tok`
+      : `최대 파일 ~${calc.maxFileTok.toLocaleString()} tok`;
+  } else {
+    // 아직 파일 없음
+    el.innerHTML = '<span style="color:var(--text3);font-size:11px;">파일 로드 후 토큰 추정</span>';
+    return;
+  }
+
+  // ── 판정 ─────────────────────────────────────────────────
+  const isOver  = rawRequired > current;
+  const isTight = rawRequired > current * 0.75;
+  const isRec   = recTok > current && !isOver;
+
+  el.style.color = isOver  ? 'var(--red)' :
+                   isTight ? 'var(--amber)' :
+                   isRec   ? 'var(--text2)' : 'var(--green)';
+
+  const recLabel  = recTok !== current
+    ? `  →  권장: <b style="color:var(--accent);">${recTok.toLocaleString()}</b>` : '';
+  const warnLabel = isOver  ? `  <span style="color:var(--red);">⚠ 부족 (필요 ~${Math.ceil(rawRequired).toLocaleString()} tok)</span>` :
+                    isTight ? `  <span style="color:var(--amber);">△ 여유 부족 (~${Math.ceil(rawRequired).toLocaleString()} tok 필요)</span>` :
+                    isRec   ? `  <span style="color:var(--text3);">✓ 동작 가능 (margin 포함 권장 ${recTok.toLocaleString()})</span>` :
+                              `  <span style="color:var(--green);">✓ 충분</span>`;
+
+  // 순차 모드 RTL 단계에서 단일 전환 시 참고 표시
+  const altHint = (cur !== 2 && cur !== 4) && !isSingle && calc.sumFileTok > calc.maxFileTok
+    ? `<br><span style="font-size:10px;color:var(--text3);">단일 컨텍스트 전환 시: ~${calc.sumFileTok.toLocaleString()} tok (권장 ${calc.recSingle.toLocaleString()})</span>`
+    : '';
+
+  // Algo/μArch Diff 단계에서 RTL 변환 단계 참고 표시
+  const rtlHint = (cur === 2 || cur === 4) && rtlFiles.length
+    ? `<br><span style="font-size:10px;color:var(--text3);">RTL 변환 시: ${isSingle ? '전체합산' : '최대파일'} ~${(isSingle?calc.sumFileTok:calc.maxFileTok).toLocaleString()} tok (권장 ${(isSingle?calc.recSingle:calc.recSeq).toLocaleString()})</span>`
+    : '';
+
+  const thinkingHint = calc.thinkingBuf > 0
+    ? `<span style="color:var(--purple);font-size:10px;"> + thinking ~${calc.thinkingBuf.toLocaleString()}</span>`
+    : '';
+
+  el.innerHTML = `${modeTag} ${baseLabel}${thinkingHint}${recLabel}${warnLabel}${altHint}${rtlHint}`;
+
+  // 청크 분할 예고 (RTL 단계)
+  if (cur !== 2 && cur !== 4 && rtlFiles.length) {
+    const budget     = getTokenBudget();
+    const splitFiles = rtlFiles.filter(f => estimateTokens(f.content) > budget * 0.7);
+    if (splitFiles.length > 0)
+      dbgLog('INF', `module 분할 예상: ${splitFiles.map(f=>f.name).join(', ')}`, 'inf');
+  }
+}
+
+// ── 중단 / 재시작 제어 ───────────────────────────────────
+let _batchAborted = false;
+
+function stopBatch() {
+  _batchAborted = true;
+  monSetStatus('중단 요청됨 — 현재 파일 완료 후 정지', 'var(--amber)');
+  dbgLog('INF', '사용자가 변환 중단 요청', 'inf');
+  document.getElementById('stopBtn').style.display = 'none';
+}
+
+async function resumeBatch() {
+  // 미완료(wait/err/run) 상태인 첫 번째 파일부터 재시작
+  const startIdx = rtlFiles.findIndex(f => f.status === 'wait' || f.status === 'run' || f.status === 'err');
+  if (startIdx === -1) {
+    setStatus('ok', '모든 파일 변환 완료'); return;
+  }
+  // run 상태 파일은 wait으로 리셋
+  rtlFiles.forEach((f, i) => { if (i >= startIdx && f.status === 'run') f.status = 'wait'; });
+  renderRtl(); renderResTabs();
+
+  dbgLog('INF', `재시작: ${rtlFiles[startIdx].name} (${startIdx+1}번째) 부터`, 'inf');
+
+  const host  = (document.getElementById('oHost').value).replace(/\/+$/,'');
+  const model = getSelectedModel();
+  logImpactUsage();
+
+  const ctx = { host, model };
+  await runSequential(ctx, startIdx);
+}
+
+// ── 중단/재시작 버튼 표시 제어 ────────────────────────────
+function showStopBtn()   { document.getElementById('stopBtn').style.display = ''; }
+function hideStopBtn()   { document.getElementById('stopBtn').style.display = 'none'; }
+function showResumeBtn() { document.getElementById('resumeBtn').style.display = ''; }
+function hideResumeBtn() { document.getElementById('resumeBtn').style.display = 'none'; }
+
+// ── Batch convert (mode dispatcher) ──────────────────────
+async function runBatch() {
+  if (!rtlFiles.length) { setStatus('er','RTL 파일을 추가하세요'); return; }
+
+  // impact 데이터 없이 변환 시도 시 경고
+  const hasAlgoDoc  = getText('ai') || getText('at');
+  const hasUarchDoc = getText('ua') || getText('ut');
+  const algoOk  = !!((_impactData.algo?.items?.length)  || !hasAlgoDoc);
+  const uarchOk = !!((_impactData.uarch?.items?.length) || !hasUarchDoc);
+
+  if (!algoOk || !uarchOk) {
+    const missing = [];
+    if (!algoOk)  missing.push('Algorithm');
+    if (!uarchOk) missing.push('μArch');
+    const msg = `<b style="color:var(--text)">${missing.join(', ')} 문서</b>가 입력되어 있지만<br>` +
+      `아직 AI 분석이 수행되지 않았습니다.<br><br>` +
+      `AI 분석 없이 변환하면 LLM에 전달할 RTL 변경점이 없어<br>` +
+      `변환 결과가 원본과 동일하거나 불정확할 수 있습니다.<br><br>` +
+      `<span style="color:var(--text3);">Algo Diff / μArch Diff 탭 → <b>AI 분석</b> 버튼을 먼저 실행하세요.</span>`;
+    document.getElementById('impactWarnMsg').innerHTML = msg;
+    document.getElementById('impactWarnModal').style.display = 'flex';
+    window._pendingBatchCtx = { host: (document.getElementById('oHost').value).replace(/\/+$/,''), model: getSelectedModel() };
+    return;
+  }
+
+  _runBatchNow();
+}
+
+function impactWarnGoAnalyze() {
+  document.getElementById('impactWarnModal').style.display = 'none';
+  // 미분석 탭으로 이동
+  if (!_impactData.algo?.items?.length && (getText('ai') || getText('at'))) goStep(1);
+  else if (!_impactData.uarch?.items?.length && (getText('ua') || getText('ut'))) goStep(3);
+}
+
+function impactWarnProceed() {
+  document.getElementById('impactWarnModal').style.display = 'none';
+  _runBatchNow();
+}
+
+async function _runBatchNow() {
+  const host  = (document.getElementById('oHost').value).replace(/\/+$/,'');
+  const model = getSelectedModel();
+
+  goStep(6); renderResTabs();
+  _batchAborted = false;
+  hideResumeBtn();
+  logImpactUsage();
+
+  const ctx = { host, model };
+
+  if (convMode === 'single') {
+    await runSingleContext(ctx);
+  } else {
+    await runSequential(ctx);
+  }
+}
+
+// ── LLM 대화 로그 저장 ────────────────────────────────────
+const llmLog = [];
+const LOG_SERVER = 'http://localhost:3000/save-log';
+
+async function saveLlmLog(entry) {
+  llmLog.push(entry);
+  try {
+    const res = await fetch(LOG_SERVER, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(entry),
+    });
+    if (res.ok) {
+      const d = await res.json();
+      dbgLog('INF', `로그 저장됨 #${d.count} → ${d.file}`, 'inf');
+    } else {
+      dbgLog('INF', `로그 서버 응답 오류 HTTP ${res.status} — 메모리에만 누적`, 'inf');
+    }
+  } catch(e) {
+    dbgLog('INF', `로그 파일 저장 불가 (dev 서버 없음) — 메모리 누적 중 (총 ${llmLog.length}건)`, 'inf');
+  }
+}
+
+function downloadLlmLog() {
+  if (!llmLog.length) { alert('저장된 LLM 대화 로그가 없습니다.'); return; }
+  const blob = new Blob([JSON.stringify(llmLog, null, 2)], {type: 'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'rtl_converter_llm_log.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+// ── 공통 fetch (streaming) ────────────────────────────────
+//
+// mode 별 파라미터 전략:
+//  'rtl'     — RTL 코드 변환 (큰 출력, 엄격한 temperature/top_p)
+//  'json'    — 구조화 분석 (중간 출력, 약간 유연한 top_p)
+//  'json-sm' — 단일 항목 JSON (소형 출력)
+//
+async function callLLM(host, model, systemMsg, userMsg, onChunk, mode = 'rtl') {
+  const inputTok = estimateTokens(systemMsg + userMsg);
+  const apiKey   = document.getElementById('oApiKey')?.value.trim() || '';
+  const endpoint = host.replace(/\/+$/, '') + '/chat/completions';
+
+  // ── 파라미터: use=true인 것만 body에 포함 ──────────────
+  const temperature = getParam('temperature', mode, inputTok);
+  const seed        = getParam('seed',        mode, inputTok);
+  const top_p       = getParam('top_p',       mode, inputTok);
+  const numCtx      = getParam('num_ctx',     mode, inputTok);
+  const thinkBuf    = getThinkingBuf(); // 계산용 (전송 안 함)
+
+  // max_tokens는 use=true면 반드시 값이 있어야 함 (빈 응답 방지)
+  let maxTokens = getParam('max_tokens', mode, inputTok);
+  if (_pset.max_tokens?.use && maxTokens === undefined) {
+    maxTokens = mode === 'rtl'      ? Math.max(2048, Math.ceil(inputTok * 1.4))
+              : mode === 'json'     ? Math.max(4096, Math.ceil(inputTok * 2.0))
+              : mode === 'json-sel' ? Math.max(512,  Math.ceil(inputTok * 0.5))
+              :                       Math.max(1024, Math.ceil(inputTok * 0.5));
+    dbgLog('INF', `[callLLM] max_tokens fallback: ${maxTokens}`, 'inf');
+  }
+
+  const useProxy = window._devServerAvailable;
+  const fetchUrl = useProxy ? 'http://localhost:3000/llm-proxy' : endpoint;
+
+  const headers = { 'Content-Type': 'application/json' };
+  if (apiKey)   headers['Authorization'] = `Bearer ${apiKey}`;
+  if (useProxy) headers['X-Target-URL']  = endpoint;
+
+  // OpenAI Compatible 표준 필드만 body에 포함
+  const bodyObj = {
+    model,
+    stream:   true,
+    messages: [
+      { role: 'system', content: systemMsg },
+      { role: 'user',   content: userMsg   }
+    ]
+  };
+  if (temperature !== undefined) bodyObj.temperature = temperature;
+  if (maxTokens   !== undefined) bodyObj.max_tokens  = maxTokens;
+  if (top_p       !== undefined) bodyObj.top_p       = top_p;
+  if (seed !== undefined && seed !== -999) bodyObj.seed = seed;
+  // Ollama 전용 options (use=true일 때만)
+  if (numCtx !== undefined) bodyObj.options = { num_ctx: numCtx };
+
+  // 로그 출력 — 실제 전송되는 파라미터만
+  const logParts = [`[callLLM:${mode}]`, `input:~${inputTok}tok`];
+  if (temperature !== undefined) logParts.push(`temperature:${temperature}`);
+  if (maxTokens   !== undefined) logParts.push(`max_tokens:${maxTokens}`);
+  if (top_p       !== undefined) logParts.push(`top_p:${top_p}`);
+  if (seed !== undefined && seed !== -999) logParts.push(`seed:${seed}`);
+  if (numCtx      !== undefined) logParts.push(`num_ctx:${numCtx}`);
+  if (thinkBuf > 0) logParts.push(`thinking_buf:${thinkBuf}(calc_only)`);
+  dbgLog('INF', logParts.join(' '), 'inf');
+
+
+  const res = await fetch(fetchUrl, {
+    method:  'POST',
+    headers,
+    body:    JSON.stringify(bodyObj)
+  });
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    dbgLog('ERR', `[callLLM] HTTP ${res.status} — ${errText.slice(0,200)}`, 'err');
+    let errMsg = `HTTP ${res.status}`;
+    try { errMsg = JSON.parse(errText).error?.message || errMsg; } catch (_) {}
+    throw new Error(errMsg);
+  }
+
+  // Content-Type 확인 — non-streaming JSON 응답 fallback
+  const ct = res.headers.get('content-type') || '';
+  if (!ct.includes('text/event-stream') && !ct.includes('application/stream')) {
+    // 일부 서버는 stream:true 요청에도 일반 JSON으로 응답
+    const data = await res.json().catch(() => null);
+    if (data) {
+      const content = data.choices?.[0]?.message?.content
+                   || data.choices?.[0]?.delta?.content
+                   || '';
+      const reason  = data.choices?.[0]?.finish_reason || '';
+      dbgLog('INF', `[callLLM] non-streaming 응답 감지 (${ct}) — ${content.length}자`, 'inf');
+      if (content) {
+        if (onChunk) onChunk(content);
+        await saveLlmLog({ timestamp: new Date().toISOString(), endpoint, model, mode,
+          finish_reason: reason, request: { system: systemMsg, user: userMsg },
+          response: content, stats: { prompt_tokens_est: inputTok, response_tokens_est: Math.round(content.length/3.5) }
+        });
+        return { raw: content, finish: reason };
+      }
+    }
+    dbgLog('ERR', `[callLLM] non-streaming 응답에서 content 없음`, 'err');
+    throw new Error('응답이 비어 있습니다 (non-streaming)');
+  }
+
+  const reader  = res.body.getReader();
+  const decoder = new TextDecoder();
+  let full   = '';
+  let finish = '';
+  let buf    = '';   // 청크 경계에 걸린 불완전 라인 누적
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buf += decoder.decode(value, { stream: true });
+
+    // 완전한 라인 단위로 처리
+    const lines = buf.split('\n');
+    buf = lines.pop() ?? '';   // 마지막 불완전 라인은 다음 청크로
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed === 'data: [DONE]') continue;
+
+      // SSE 형식: "data: {...}"
+      const jsonStr = trimmed.startsWith('data: ')
+        ? trimmed.slice(6)
+        : trimmed;   // 일부 서버는 data: 없이 바로 JSON
+
+      try {
+        const json   = JSON.parse(jsonStr);
+        const delta  = json.choices?.[0]?.delta?.content ?? '';
+        const reason = json.choices?.[0]?.finish_reason;
+        if (delta) {
+          full += delta;
+          if (onChunk) onChunk(full);
+        }
+        if (reason) finish = reason;
+      } catch (_) {
+        // JSON 파싱 실패 라인은 무시 (헤더, 빈 줄 등)
+      }
+    }
+  }
+
+  // 버퍼 잔여 처리
+  if (buf.trim() && buf.trim() !== 'data: [DONE]') {
+    const jsonStr = buf.trim().startsWith('data: ') ? buf.trim().slice(6) : buf.trim();
+    try {
+      const json  = JSON.parse(jsonStr);
+      const delta = json.choices?.[0]?.delta?.content ?? '';
+      if (delta) { full += delta; if (onChunk) onChunk(full); }
+      const reason = json.choices?.[0]?.finish_reason;
+      if (reason) finish = reason;
+    } catch (_) {}
+  }
+
+  if (!full) {
+    dbgLog('ERR', `[callLLM] 응답이 비어 있음. mode:${mode} endpoint:${endpoint}`, 'err');
+    throw new Error('응답이 비어 있습니다 — 서버 로그 또는 콘솔을 확인하세요');
+  }
+
+  // LLM 대화 로그 기록
+  await saveLlmLog({
+    timestamp:  new Date().toISOString(),
+    endpoint,   model,   mode,
+    params: {
+      ...(temperature !== undefined && { temperature }),
+      ...(maxTokens   !== undefined && { max_tokens: maxTokens }),
+      ...(top_p       !== undefined && { top_p }),
+      ...(seed !== undefined && seed !== -999 && { seed }),
+      ...(numCtx      !== undefined && { num_ctx: numCtx }),
+    },
+    finish_reason: finish,
+    request:  { system: systemMsg, user: userMsg },
+    response: full,
+    stats: {
+      prompt_chars:        (systemMsg + userMsg).length,
+      response_chars:      full.length,
+      prompt_tokens_est:   Math.round((systemMsg + userMsg).length / 3.5),
+      response_tokens_est: Math.round(full.length / 3.5),
+    }
+  });
+
+  return { raw: full, finish };
+}
+
+function parseResult(raw, fname) {
+  const sep = raw.indexOf('===CHANGES===');
+  const result  = (sep !== -1 ? raw.slice(0, sep) : raw).trim();
+  const changes = (sep !== -1 ? raw.slice(sep+13).trim() : '').split('\n').filter(l => l.includes('|'));
+  return { result, changes };
+}
+
+// ── 컨텍스트 제어 헬퍼 ────────────────────────────────────
+// ── 파라미터 팝업 ─────────────────────────────────────────
+// 숨겨진 실제 값 저장소 (callLLM이 읽는 곳)
+const _params = { oNumCtx: 32768, oThinkingBuf: 0, oTemperature: 0, oSeed: 42 };
+
+function getNumCtx()      { return _params.oNumCtx; }
+function getThinkingBuf() { return _params.oThinkingBuf; }
+function getTemperature() { return _params.oTemperature; }
+function getSeed()        { return _params.oSeed; }
+
+// ── 파라미터 팝업 신규 구조 ──────────────────────────────
+// _pset: 각 파라미터의 설정 상태
+// use: true=body에 포함, false=제외(서버 기본값)
+// mode: 'auto'=자동계산, 'manual'=직접입력
+// val: 수동값
+const _pset = {
+  temperature: { use: true,  mode: 'auto',   val: 0     },
+  seed:        { use: true,  mode: 'auto',   val: 42    },
+  max_tokens:  { use: true,  mode: 'auto',   val: 8192  },
+  top_p:       { use: true,  mode: 'auto',   val: 0.1   },
+  num_ctx:     { use: false, mode: 'auto',   val: 32768 }, // OLLAMA_MODE 전용 (기본 비활성)
+  thinking:    { use: false, mode: 'manual', val: 0     }, // 계산용
+};
+
+// 자동값 계산 (mode와 inputTok은 callLLM에서 결정)
+function calcAutoVals(mode, inputTok) {
+  const isRtl     = mode === 'rtl';
+  const isJson    = mode === 'json';
+  const isJsonSel = mode === 'json-sel';
+
+  // max_tokens 계산
+  // - rtl:      출력 ≈ 입력 RTL (× 1.4, 최소 2048)
+  // - json:     impact 분석 결과는 항목 수에 따라 커질 수 있음 (× 2.0, 최소 4096)
+  // - json-sel: 파일 목록 JSON — 짧음 (× 0.5, 최소 512)
+  // - json-sm:  단일 항목 JSON — 매우 짧음 (× 0.5, 최소 1024)
+  const maxTok = isRtl     ? Math.max(2048, Math.ceil(inputTok * 1.4))
+               : isJson    ? Math.max(4096, Math.ceil(inputTok * 2.0))
+               : isJsonSel ? Math.max(512,  Math.ceil(inputTok * 0.5))
+               :             Math.max(1024, Math.ceil(inputTok * 0.5));
+
+  console.debug(`[calcAutoVals] mode:${mode} inputTok:${inputTok} → max_tokens:${maxTok}`);
+
+  return {
+    temperature: 0,
+    seed:        42,
+    max_tokens:  maxTok,
+    top_p:       isRtl ? 0.1 : 0.3,
+  };
+}
+
+// 팝업 열기
+function openParamPopup() {
+  // 자동값 미리보기 (현재 단계 기준, inputTok=0으로 근사)
+  const autoVals = calcAutoVals('rtl', 500); // 대표 미리보기
+  const pkeys = ['temperature','seed','max_tokens','top_p','num_ctx','thinking'];
+  pkeys.forEach(key => {
+    const p = _pset[key];
+    // 사용 체크박스
+    const useEl = document.getElementById(`puse-${key}`);
+    if (useEl) useEl.checked = p.use;
+    // 모드 셀렉트
+    const modeEl = document.getElementById(`pmode-${key}`);
+    if (modeEl) { modeEl.value = p.mode; modeEl.disabled = !p.use; }
+    // 자동값 표시
+    const autoEl = document.getElementById(`pauto-${key}`);
+    if (autoEl) {
+      const av = autoVals[key];
+      autoEl.textContent = av !== undefined ? String(av) : '–';
+      autoEl.style.display = (p.mode === 'auto' && p.use) ? '' : 'none';
+    }
+    // 수동 입력
+    const manEl = document.getElementById(`pman-${key}`);
+    if (manEl) {
+      manEl.value = p.val;
+      manEl.style.display = (p.mode === 'manual' && p.use) ? '' : 'none';
+      manEl.disabled = !p.use;
+    }
+    // range 슬라이더 (temperature)
+    if (key === 'temperature') {
+      const rng = document.getElementById('prange-temperature');
+      if (rng) { rng.value = p.val; rng.style.display = (p.mode === 'manual' && p.use) ? '' : 'none'; rng.disabled = !p.use; }
+    }
+    // 행 전체 dimming
+    const row = document.getElementById(`prow-${key}`);
+    if (row) row.classList.toggle('disabled-row', !p.use);
+  });
+  document.getElementById('paramPopup').style.display = 'flex';
+}
+
+function closeParamPopup() {
+  document.getElementById('paramPopup').style.display = 'none';
+}
+
+// 사용 체크박스 변경
+function onPParamUseChange(key) {
+  const use   = document.getElementById(`puse-${key}`).checked;
+  _pset[key].use = use;
+  const modeEl = document.getElementById(`pmode-${key}`);
+  const manEl  = document.getElementById(`pman-${key}`);
+  const autoEl = document.getElementById(`pauto-${key}`);
+  const row    = document.getElementById(`prow-${key}`);
+  if (modeEl) modeEl.disabled = !use;
+  if (manEl)  { manEl.disabled = !use; manEl.style.display = (use && _pset[key].mode === 'manual') ? '' : 'none'; }
+  if (autoEl) autoEl.style.display = (use && _pset[key].mode === 'auto') ? '' : 'none';
+  if (row)    row.classList.toggle('disabled-row', !use);
+  if (key === 'temperature') {
+    const rng = document.getElementById('prange-temperature');
+    if (rng) { rng.disabled = !use; rng.style.display = (use && _pset[key].mode === 'manual') ? '' : 'none'; }
+  }
+}
+
+// 모드 셀렉트 변경
+function onPParamModeChange(key) {
+  const mode   = document.getElementById(`pmode-${key}`).value;
+  _pset[key].mode = mode;
+  const manEl  = document.getElementById(`pman-${key}`);
+  const autoEl = document.getElementById(`pauto-${key}`);
+  if (manEl)  manEl.style.display  = mode === 'manual' ? '' : 'none';
+  if (autoEl) autoEl.style.display = mode === 'auto'   ? '' : 'none';
+  if (key === 'temperature') {
+    const rng = document.getElementById('prange-temperature');
+    if (rng) rng.style.display = mode === 'manual' ? '' : 'none';
+  }
+}
+
+function syncTempRange() {
+  const v = document.getElementById('pman-temperature')?.value;
+  const r = document.getElementById('prange-temperature');
+  if (r && v) r.value = v;
+}
+
+// 적용 버튼
+function applyParamPopup() {
+  const pkeys = ['temperature','seed','max_tokens','top_p','num_ctx','thinking'];
+  pkeys.forEach(key => {
+    _pset[key].use  = document.getElementById(`puse-${key}`)?.checked ?? _pset[key].use;
+    _pset[key].mode = document.getElementById(`pmode-${key}`)?.value  ?? _pset[key].mode;
+    // val은 manual 모드일 때만 입력란에서 읽음 (auto 시 덮어쓰지 않음)
+    if (_pset[key].mode === 'manual') {
+      const manEl = document.getElementById(`pman-${key}`);
+      if (manEl) {
+        const raw = manEl.value;
+        _pset[key].val = (key === 'temperature' || key === 'top_p')
+          ? parseFloat(raw) : parseInt(raw);
+      }
+    }
+  });
+  updateParamSummary();
+  updateCtxEstimate();
+  closeParamPopup();
+  const summary = pkeys.filter(k => _pset[k].use)
+    .map(k => `${k}:${_pset[k].mode === 'auto' ? 'auto' : _pset[k].val}`).join(' ');
+  dbgLog('INF', `[params applied] ${summary}`, 'inf');
+}
+
+// 헬퍼: 특정 파라미터의 실제 값 (auto면 inputTok 기반 계산)
+function getParam(key, mode, inputTok) {
+  const p = _pset[key];
+  if (!p || !p.use) return undefined;
+  if (p.mode === 'manual') {
+    return p.val;
+  }
+  // auto 모드: inputTok 기반 계산
+  try {
+    const v = calcAutoVals(mode, inputTok)[key];
+    if (v === undefined) {
+      // auto인데 calcAutoVals에 해당 key가 없는 경우 (num_ctx 등)
+      return p.val;
+    }
+    return v;
+  } catch(e) {
+    console.warn(`[getParam] ${key} 자동 계산 실패, val 사용:`, e);
+    return p.val;
+  }
+}
+
+// cfg 바 요약 업데이트
+function onAutoParamChange() {
+  updateParamSummary();
+  updateCtxEstimate();
+}
+
+// cfg 바 자동 체크박스 (이제 역할이 축소됨 — 요약 표시용)
+function updateParamSummary() {
+  const el = document.getElementById('paramSummary');
+  if (!el) return;
+  const active = Object.entries(_pset)
+    .filter(([k, p]) => p.use && k !== 'thinking' && k !== 'num_ctx')
+    .map(([k, p]) => `${k}:${p.mode === 'auto' ? '⚡' : p.val}`)
+    .join(' ');
+  const ollamaCtx = _pset.num_ctx.use ? ` num_ctx:${_pset.num_ctx.mode === 'auto' ? '⚡' : _pset.num_ctx.val}` : '';
+  el.innerHTML = `<span style="color:var(--text3);font-size:11px;">${active}${ollamaCtx}</span>`;
+}
+
+// 구 함수 호환성 유지
+function getNumCtx()      { return _pset.num_ctx.use ? _pset.num_ctx.val : null; }
+function getThinkingBuf() { return _pset.thinking.use ? (_pset.thinking.val || 0) : 0; }
+function getTemperature() { return _pset.temperature.use ? _pset.temperature.val : undefined; }
+function getSeed()        { return _pset.seed.use ? _pset.seed.val : -999; } // -999 = 제외
+function resetToAutoParams() { openParamPopup(); } // 팝업에서 직접 설정
+function syncPopupForm()  {}
+function onAutoParamChange2() {}
+// 스텝 이동·파일 변경 시 자동값 갱신
+function refreshAutoParams() {
+  try {
+    updateParamSummary();
+    updateCtxEstimate();
+  } catch(e) {
+    console.warn('[refreshAutoParams]', e);
+  }
+}
+// 기존 함수 호환성 유지
+function syncParamUI() { updateParamSummary(); }
+function applyAutoParams() { updateParamSummary(); }
+function enableParamEdit()    { openParamPopup(); }
+function onParamManualEdit()  {}
+
+// 자동값 계산 (현재 스텝 + 처리 모드 기반)
+function calcAutoParams() {
+  const calc     = autoCalcNumCtx();
+  const isSingle = convMode === 'single';
+  let numCtx;
+  if      (cur === 2 && calc.algoDocTok  > 0) numCtx = calc.recAlgo;
+  else if (cur === 4 && calc.uarchDocTok > 0) numCtx = calc.recUarch;
+  else if (rtlFiles.length)                   numCtx = isSingle ? calc.recSingle : calc.recSeq;
+  else                                        numCtx = 32768;
+  return { oNumCtx: numCtx, oTemperature: 0, oSeed: 42 };
+}
+
+function isCompressPrompt() {
+  return document.getElementById('compressPrompt')?.checked ?? true;
+}
+function isSigOnly() {
+  return document.getElementById('sigOnlyMode')?.checked ?? false;
+}
+function estimateTokens(text) {
+  return Math.round((text || '').length / 3.5);
+}
+
+// 프롬프트 컨텍스트 — _impactData의 최종 정리된 변경점만 사용
+function buildContextSection() {
+  const algoText  = buildImpactText('algo');
+  const uarchText = buildImpactText('uarch');
+
+  const algoSection  = algoText.trim()  ? `=== Algorithm RTL Change Points ===\n${algoText}`  : '';
+  const uarchSection = uarchText.trim() ? `=== μArch RTL Change Points ===\n${uarchText}`     : '';
+
+  if (!algoSection && !uarchSection) {
+    return '=== RTL Change Points: NONE DEFINED ===\n' +
+           '(No AI analysis has been run. Convert may produce minimal changes.)';
+  }
+  return [algoSection, uarchSection].filter(Boolean).join('\n\n');
+}
+
+// RTL 파일을 module 경계로 분할
+function splitByModule(content) {
+  const chunks = [];
+  const lines = content.split('\n');
+  let current = [];
+  let depth = 0;
+
+  for (const line of lines) {
+    current.push(line);
+    const t = line.trim();
+    if (/^module\b/.test(t)) depth++;
+    if (/^endmodule\b/.test(t)) {
+      depth--;
+      if (depth <= 0) {
+        chunks.push(current.join('\n'));
+        current = [];
+        depth = 0;
+      }
+    }
+  }
+  if (current.length > 0) chunks.push(current.join('\n'));
+  return chunks.filter(c => c.trim());
+}
+
+// 파일이 토큰 예산 초과인지 확인 + 분할 필요 시 청크 목록 반환
+function getChunks(content, contextOverhead) {
+  const budget = getTokenBudget();
+  const fileTokens = estimateTokens(content);
+  if (fileTokens + contextOverhead <= budget) {
+    return [content]; // 분할 불필요
+  }
+  // module 경계로 분할
+  const modules = splitByModule(content);
+  if (modules.length <= 1) return [content]; // 분할 불가
+  dbgLog('INF', `청크 분할: ${modules.length}개 module (파일 ~${fileTokens} tokens, 예산 ${budget})`, 'inf');
+  return modules;
+}
+
+// ── 모듈 시그니처 추출 (순차 처리용) ─────────────────────
+function extractSignature(rtlCode, fname) {
+  // module 선언 + port 목록 + parameter 추출 (첫 endmodule 직전까지 헤더만)
+  const lines = rtlCode.split('\n');
+  const sig = [];
+  let inModule = false, depth = 0;
+  for (const line of lines) {
+    const t = line.trim();
+    if (!inModule && /^module\s/.test(t)) { inModule = true; }
+    if (inModule) {
+      sig.push(line);
+      if (/\bmodule\b/.test(t) && !/\bendmodule\b/.test(t)) depth++;
+      if (/\bendmodule\b/.test(t)) {
+        depth--;
+        if (depth <= 0) break;
+      }
+      // 포트 선언 끝나면 (첫 always/assign/initial) 시그니처만 남기고 중단
+      if (/^\s*(always|assign|initial|generate)\b/.test(t) && sig.length > 3) break;
+    }
+  }
+  return `// === Module signature: ${fname} ===\n${sig.slice(0,40).join('\n')}\n// ...`;
+}
+
+// ── Iteration (개선 지시) ─────────────────────────────────
+// rtlFiles[i].history: [{prompt, result, changes, timestamp}]
+
+function toggleIterPanel() {
+  const body = document.getElementById('iterBody');
+  const btn  = document.querySelector('#iterPanel .btn-g');
+  const open = body.style.display !== 'none';
+  body.style.display = open ? 'none' : '';
+  btn.textContent = open ? '▼' : '▲';
+}
+
+function showIterPanel() {
+  document.getElementById('iterPanel').style.display = '';
+  renderIterFileList();
+  _syncResultHandles();
+}
+
+// 파일 체크박스 렌더링
+function renderIterFileList() {
+  const wrap = document.getElementById('iterFileList');
+  wrap.innerHTML = rtlFiles.map((f, i) => {
+    const sel = f._iterSelected !== false; // 기본 true
+    return `<label class="iter-filechk ${sel ? 'sel' : ''}" id="ifc-${i}">
+      <input type="checkbox" ${sel ? 'checked' : ''} onchange="toggleIterFile(${i}, this.checked)">
+      <span class="fname-lbl" title="${esc(f.name)}">${esc(f.name)}</span>
+      <span class="fsize-lbl">${f.result ? (f.result.length/1024).toFixed(1)+'K' : '—'}</span>
+    </label>`;
+  }).join('');
+  updateIterTokenEst();
+}
+
+function toggleIterFile(idx, checked) {
+  rtlFiles[idx]._iterSelected = checked;
+  const lbl = document.getElementById(`ifc-${idx}`);
+  if (lbl) lbl.className = `iter-filechk ${checked ? 'sel' : ''}`;
+  updateIterTokenEst();
+}
+
+function selectAllIterFiles(val) {
+  rtlFiles.forEach((f, i) => { f._iterSelected = val; });
+  renderIterFileList();
+}
+
+// ── LLM 파일 분석 (1단계) ────────────────────────────────
+async function analyzeAndSelect() {
+  const userPrompt = document.getElementById('iterPrompt').value.trim();
+  if (!userPrompt) { alert('개선 지시를 먼저 입력하세요.'); return; }
+
+  const host  = (document.getElementById('oHost').value||'').replace(/\/+$/, '');
+  const model = getSelectedModel();
+
+  const analyzeBtn = document.getElementById('iterAnalyzeBtn');
+  analyzeBtn.disabled = true;
+  analyzeBtn.textContent = '분석 중…';
+
+  // 파일 목록 + 시그니처 요약 전달 (전체 코드 X, 시그니처만)
+  const fileSummaries = rtlFiles
+    .filter(f => f.result)
+    .map(f => `- ${f.name}: ${extractSignature(f.result, f.name).split('\n').slice(0,6).join(' | ')}`)
+    .join('\n');
+
+  const analysisPrompt = `You are an RTL engineer. Given the user's improvement instruction and a list of RTL files with their module signatures, determine which files need to be modified.
+
+User instruction: "${userPrompt}"
+
+Available files and their signatures:
+${fileSummaries}
+
+Respond in JSON only (no markdown, no explanation):
+{
+  "selected": ["filename1.v", "filename2.v"],
+  "reasoning": "brief reason why these files are relevant",
+  "risk": ["filename3.v (may need port update)"]
+}`;
+
+  try {
+    let raw = '';
+    await callLLM(host, model,
+      'You are an RTL engineer. Respond only in valid JSON.',
+      analysisPrompt,
+      (partial) => { raw = partial; },
+      'json-sel'
+    );
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error('JSON 파싱 실패');
+    const result = JSON.parse(jsonMatch[0]);
+
+    // 선택 반영
+    rtlFiles.forEach(f => { f._iterSelected = false; });
+    (result.selected || []).forEach(fname => {
+      const f = rtlFiles.find(x => x.name === fname || fname.includes(x.name) || x.name.includes(fname));
+      if (f) f._iterSelected = true;
+    });
+
+    renderIterFileList();
+
+    // 판단 근거 표시
+    const reasonEl = document.getElementById('iterReasoning');
+    let reasonHtml = `<span style="color:var(--accent);">▸ 선택:</span> ${(result.selected||[]).join(', ') || '없음'}`;
+    if (result.reasoning) reasonHtml += `<br><span style="color:var(--text2);">▸ 이유:</span> ${esc(result.reasoning)}`;
+    if (result.risk?.length) reasonHtml += `<br><span style="color:var(--amber);">▸ 주의:</span> ${result.risk.map(esc).join(', ')}`;
+    reasonEl.innerHTML = reasonHtml;
+    reasonEl.style.display = '';
+
+    dbgLog('INF', `[iter 분석] 선택: ${(result.selected||[]).join(', ')}`, 'inf');
+
+  } catch(e) {
+    dbgLog('ERR', `[iter 분석] ${e.message}`, 'err');
+    // 분석 실패 시 전체 선택으로 fallback
+    rtlFiles.forEach(f => { f._iterSelected = true; });
+    renderIterFileList();
+    const reasonEl = document.getElementById('iterReasoning');
+    reasonEl.innerHTML = `<span style="color:var(--red);">분석 실패 — 전체 파일 선택됨: ${e.message}</span>`;
+    reasonEl.style.display = '';
+  } finally {
+    analyzeBtn.disabled = false;
+    analyzeBtn.textContent = '🔍 파일 분석';
+  }
+}
+
+// ── 인라인 수정 ───────────────────────────────────────────
+let _inlineEditIdx = -1;
+
+function enableInlineEdit(idx) {
+  _inlineEditIdx = idx;
+  const f = rtlFiles[idx];
+  if (!f?.result) return;
+  const wrap = document.getElementById('resWrap');
+
+  wrap.innerHTML = `
+    <div class="ph" style="flex-shrink:0;">
+      <div class="pt"><div class="dot a"></div>인라인 수정 — ${esc(f.name)}</div>
+      <div style="display:flex;gap:6px;">
+        <button class="cbtn" onclick="saveInlineEdit(${idx})">✓ 저장</button>
+        <button class="cbtn" onclick="showRes(${idx})">✕ 취소</button>
+      </div>
+    </div>
+    <textarea id="inlineEditor"
+      style="flex:1;font-family:var(--mono);font-size:12px;line-height:1.7;background:var(--bg);color:var(--text);border:none;outline:none;resize:none;padding:10px 14px;overflow:auto;"
+      spellcheck="false">${f.result.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</textarea>
+    <div style="padding:4px 14px;background:var(--surface);border-top:1px solid var(--border);font-family:var(--mono);font-size:10px;color:var(--text3);flex-shrink:0;">
+      직접 편집 후 ✓ 저장 — 저장 시 히스토리에 기록됩니다
+    </div>`;
+}
+
+function saveInlineEdit(idx) {
+  const f = rtlFiles[idx];
+  const editor = document.getElementById('inlineEditor');
+  if (!f || !editor) return;
+
+  const newResult = editor.value;
+  if (newResult === f.result) { showRes(idx); return; }
+
+  // 히스토리 저장
+  if (!f.history) f.history = [];
+  f.history.push({
+    version:   f.history.length + 1,
+    prompt:    '(인라인 직접 수정)',
+    result:    f.result,
+    changes:   f.changes,
+    timestamp: new Date().toISOString(),
+  });
+  f.result = newResult;
+  f.status = 'ok';
+  dbgLog('INF', `[inline edit] ${f.name} 저장됨`, 'inf');
+  showRes(idx);
+  renderResTabs();
+}
+
+// 기존 autoSelectFiles는 유지 (fallback용)
+function autoSelectFiles() {
+  // 분석 버튼 클릭 유도로 대체 — 자동 실행 없음
+}
+
+function updateIterTokenEst() {
+  const selected = rtlFiles.filter(f => f._iterSelected !== false && f.result);
+  const totalChars = selected.reduce((s, f) => s + (f.result || '').length, 0);
+  const est = estimateTokens(' '.repeat(totalChars));
+  const warn = est > 60000;
+  const el = document.getElementById('iterTokenEst');
+  if (!el) return;
+  el.textContent = selected.length > 0
+    ? `선택 ${selected.length}개 파일  ~${est.toLocaleString()} tokens${warn ? '  ⚠ 컨텍스트 주의' : ''}`
+    : '파일을 선택하세요';
+  el.style.color = warn ? 'var(--red)' : 'var(--text3)';
+}
+
+// 개선 실행
+async function runIteration() {
+  const userPrompt = document.getElementById('iterPrompt').value.trim();
+  if (!userPrompt) { alert('개선 지시를 입력하세요.'); return; }
+
+  const selected = rtlFiles.filter(f => f._iterSelected !== false && f.result);
+  if (!selected.length) { alert('파일을 하나 이상 선택하세요.'); return; }
+
+  const host  = (document.getElementById('oHost').value||'').replace(/\/+$/, '');
+  const model = getSelectedModel();
+
+  // 선택 파일의 시그니처 (비선택 파일은 시그니처만)
+  const nonSelected = rtlFiles.filter(f => f._iterSelected === false && f.result);
+  const sigCtx = nonSelected.length
+    ? `=== Other module signatures (for reference) ===\n` +
+      nonSelected.map(f => extractSignature(f.result, f.name)).join('\n\n') + '\n'
+    : '';
+
+  const rtlCtx = selected.map(f =>
+    `=== File: ${f.name} (current version) ===\n${f.result}`
+  ).join('\n\n');
+
+  const prompt = `You are an expert RTL (Verilog/SystemVerilog) engineer.
+
+The user has reviewed the converted RTL and wants the following improvement:
+
+=== User instruction ===
+${userPrompt}
+
+${sigCtx}
+${rtlCtx}
+
+Rules:
+- Apply ONLY the changes requested by the user instruction
+- Output the COMPLETE modified file(s) — one per selected file
+- Each changed line: add comment // ITER: <brief reason>
+- Output format:
+    ===FILE: <filename>===
+    <complete modified RTL>
+    ===CHANGES: <filename>===
+    SOURCE|TYPE|description
+    (repeat for each file)`;
+
+  const promptTokens = estimateTokens(prompt);
+  dbgLog('REQ', `[iter] ${selected.length}개 파일  ~${promptTokens.toLocaleString()} tokens`, 'req');
+
+  // 버튼 비활성화
+  const runBtn = document.querySelector('#iterPanel .btn-p');
+  if (runBtn) { runBtn.disabled = true; runBtn.textContent = '처리 중…'; }
+  monShow();
+  monSetStatus(`개선 지시 처리 중 — ${selected.length}개 파일`, 'var(--amber)');
+  const stepId = `iter-${Date.now()}`;
+  monAddStep(stepId, '<span class="spin">◌</span>', '개선 지시 실행',
+    `"${userPrompt.slice(0,40)}${userPrompt.length>40?'…':''}"  ~${promptTokens.toLocaleString()} tokens`, 'active');
+
+  try {
+    const t0 = Date.now();
+    let full = '';
+    const onChunk = (partial) => {
+      full = partial;
+      const tc = Math.round(partial.length / 3.5);
+      monUpdateDetail(stepId, `생성 중… ~${tc.toLocaleString()} tokens  ${((Date.now()-t0)/1000).toFixed(1)}s`);
+    };
+
+    const { raw, finish } = await callLLM(host, model,
+      'You are an expert RTL engineer. Apply only the requested changes precisely.',
+      prompt, onChunk,
+      'rtl'
+    );
+    const elapsed = ((Date.now()-t0)/1000).toFixed(1);
+
+    // 파싱 및 히스토리 저장
+    const fileBlocks = raw.split(/===FILE:\s*(.+?)===/).slice(1);
+    let updated = 0;
+    for (let i = 0; i < fileBlocks.length; i += 2) {
+      const fname = fileBlocks[i].trim();
+      const body  = fileBlocks[i+1] || '';
+      const f = rtlFiles.find(x =>
+        x.name === fname || fname.includes(x.name) || x.name.includes(fname)
+      );
+      if (!f) continue;
+
+      const sepIdx = body.indexOf(`===CHANGES: ${fname}===`);
+      const newResult  = (sepIdx !== -1 ? body.slice(0, sepIdx) : body).trim();
+      const newChanges = (sepIdx !== -1 ? body.slice(sepIdx + `===CHANGES: ${fname}===`.length).trim() : '')
+        .split('\n').filter(l => l.includes('|'));
+
+      // 히스토리 누적
+      if (!f.history) f.history = [];
+      f.history.push({
+        version:   f.history.length + 1,
+        prompt:    userPrompt,
+        result:    f.result,   // 이전 버전 저장
+        changes:   f.changes,
+        timestamp: new Date().toISOString(),
+      });
+      f.result  = newResult;
+      f.changes = newChanges;
+      f.status  = 'ok';
+      updated++;
+    }
+
+    monUpdateStep(stepId, '✓', 'done',
+      `완료 — ${updated}개 파일 수정  ${elapsed}s  finish=${finish}`);
+    monSetStatus(`개선 완료 — ${updated}개 파일 업데이트`, 'var(--green)');
+
+    // 결과 갱신
+    renderResTabs();
+    rtlFiles.forEach((_, i) => { if (rtlFiles[i]._iterSelected !== false) showRes(i); });
+    showRes(resActive);
+
+    // 지시창 초기화
+    document.getElementById('iterPrompt').value = '';
+    renderIterFileList();
+
+    dbgLog('RES', `[iter] ${updated}개 파일 업데이트  ${elapsed}s`, 'res');
+
+  } catch(e) {
+    monUpdateStep(stepId, '✕', 'err', `오류: ${e.message}`);
+    monSetStatus(`개선 실패: ${e.message}`, 'var(--red)');
+    dbgLog('ERR', `[iter] ${e.message}`, 'err');
+  } finally {
+    if (runBtn) { runBtn.disabled = false; runBtn.textContent = '▶ 개선 실행'; }
+  }
+}
+
+// 버전 히스토리 탭 렌더링 (showRes 내부에서 호출)
+
+function showVersion(fileIdx, histIdx) {
+  const f = rtlFiles[fileIdx];
+  if (!f || !f.history) return;
+  const h = f.history[histIdx];
+  const wrap = document.getElementById('resWrap');
+
+  // diff 계산 (이전 버전 → 현재 버전)
+  const oldLines = h.result.split('\n');
+  const newLines = f.result.split('\n');
+  const diffResult = diffLines(oldLines, newLines);
+
+  let diffHtml = '';
+  diffResult.forEach(x => {
+    const e = esc(x.x);
+    if      (x.t === 'a') diffHtml += `<div class="dl add"><span class="gut">+</span>${e}</div>`;
+    else if (x.t === 'r') diffHtml += `<div class="dl rem"><span class="gut">-</span>${e}</div>`;
+    else                  diffHtml += `<div class="dl sam"><span class="gut"> </span>${e}</div>`;
+  });
+
+  const adds = diffResult.filter(x => x.t === 'a').length;
+  const rems = diffResult.filter(x => x.t === 'r').length;
+
+  // 버전 탭 (현재 보고 있는 버전 강조)
+  const vTabsHtml = `<div style="display:flex;align-items:center;gap:4px;padding:5px 14px;border-bottom:1px solid var(--border);background:var(--s2);flex-shrink:0;overflow-x:auto;flex-wrap:nowrap;">
+    <span style="font-family:var(--mono);font-size:11px;color:var(--text3);margin-right:4px;flex-shrink:0;">버전</span>
+    ${f.history.map((hh, vi) =>
+      `<button class="vtab ${vi === histIdx ? 'active' : ''}" onclick="showVersion(${fileIdx},${vi})"
+        title="${esc(hh.prompt || '직접 수정')}">v${hh.version}</button>`
+    ).join('')}
+    <button class="vtab latest" onclick="showRes(${fileIdx})">현재</button>
+  </div>`;
+
+  // prompt 전체 표시 영역 (길면 펼칠 수 있도록)
+  const promptText = h.prompt || '(인라인 직접 수정)';
+  const promptHtml = `
+    <div style="padding:10px 14px;background:var(--s2);border-bottom:1px solid var(--border);flex-shrink:0;">
+      <div style="font-family:var(--mono);font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;">
+        v${h.version} 개선 지시 프롬프트
+      </div>
+      <div style="font-family:var(--mono);font-size:12px;color:var(--text2);background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:8px 11px;line-height:1.7;white-space:pre-wrap;max-height:100px;overflow-y:auto;">${esc(promptText)}</div>
+    </div>`;
+
+  wrap.innerHTML = `
+    ${vTabsHtml}
+    ${promptHtml}
+    <div style="font-family:var(--mono);font-size:11px;padding:5px 14px;background:var(--surface);border-bottom:1px solid var(--border);color:var(--text3);flex-shrink:0;display:flex;gap:16px;">
+      <span>v${h.version} → 현재  —  <b style="color:var(--text2);">${esc(f.name)}</b></span>
+      <span style="color:var(--green);">+${adds}</span>
+      <span style="color:var(--red);">-${rems}</span>
+      <span>${new Date(h.timestamp).toLocaleString()}</span>
+    </div>
+    <div class="diff-block" style="flex:1;">${diffHtml}</div>
+    <div style="padding:6px 14px;background:var(--surface);border-top:1px solid var(--border);flex-shrink:0;">
+      <button class="btn-g btn" style="font-size:11px;padding:4px 14px;" onclick="showRes(${fileIdx})">← 현재 버전으로 돌아가기</button>
+    </div>`;
+}
+
+// ── RTL 영향 변경점 분석 ──────────────────────────────────
+async function analyzeRtlImpact(mk) {
+  const impactId  = mk === 'algo' ? 'adImpact' : 'udImpact';
+  const pairsData = mk === 'algo' ? algoPairs : uarchPairs;
+  const label     = mk === 'algo' ? 'Algorithm' : 'μArch';
+  const impactEl  = document.getElementById(impactId);
+  const btn       = document.getElementById(mk === 'algo' ? 'adAnalyzeBtn' : 'udAnalyzeBtn');
+
+  if (!pairsData.length) {
+    impactEl.innerHTML = '<div style="font-family:var(--mono);font-size:11px;color:var(--text3);">먼저 diff를 생성하세요</div>';
+    return;
+  }
+
+  const host  = (document.getElementById('oHost').value||'').replace(/\/+$/, '');
+  const model = getSelectedModel();
+
+  btn.disabled = true;
+  btn.textContent = '분석 중…';
+  impactEl.innerHTML = '<div style="font-family:var(--mono);font-size:11px;color:var(--amber);">AI 분석 중…</div>';
+
+  // 현재 활성 pair의 diff 내용 추출
+  const diffItems = pairsData.map(p => {
+    const lines = diffLines(
+      (p.a || '').split('\n'),
+      (p.b || '').split('\n')
+    ).filter(x => x.t !== 's').map(x => `${x.t === 'a' ? '+' : '-'} ${x.x.trim()}`);
+    return `### ${p.label}\n${lines.slice(0, 80).join('\n') || '(변경 없음)'}`;
+  }).join('\n\n');
+
+  const prompt = `You are an expert RTL (Verilog/SystemVerilog) engineer.
+
+Analyze the following ${label} diff and extract ONLY the changes that are directly relevant to RTL implementation.
+For each relevant change, classify it and explain the RTL impact concisely.
+
+${label} Diff:
+${diffItems}
+
+Respond in JSON only (no markdown):
+{
+  "items": [
+    {
+      "category": "port|signal|timing|parameter|logic|interface",
+      "priority": "high|med|low",
+      "change": "brief description of what changed",
+      "rtl_impact": "what RTL code needs to change (be specific: signal width, port direction, always block, parameter, etc.)",
+      "affected": ["module_or_signal_names"]
+    }
+  ],
+  "summary": "one-line overall RTL impact summary"
+}
+
+Rules:
+- Only include changes that require RTL code modification
+- Skip documentation-only, comment, or naming changes with no RTL impact
+- Be specific about RTL constructs (signals, ports, parameters, always blocks, etc.)
+- If no RTL-relevant changes, return empty items array`;
+
+  try {
+    let raw = '';
+    const t0 = Date.now();
+
+    await callLLM(host, model,
+      'You are an RTL engineer. Respond only in valid JSON.',
+      prompt,
+      partial => {
+        raw = partial;
+        const tc      = Math.round(partial.length / 3.5);
+        const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+        impactEl.innerHTML = `
+          <div style="display:flex;flex-direction:column;gap:10px;padding:4px 0;">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span class="spin" style="display:inline-block;font-size:14px;animation:spin .8s linear infinite;">◌</span>
+              <span style="font-family:var(--mono);font-size:11px;color:var(--amber);">분석 중…</span>
+            </div>
+            <div style="font-family:var(--mono);font-size:11px;color:var(--text2);display:flex;gap:16px;">
+              <span>토큰 <span style="color:var(--accent);">~${tc.toLocaleString()}</span></span>
+              <span>경과 <span style="color:var(--accent);">${elapsed}s</span></span>
+            </div>
+            <div style="font-family:var(--mono);font-size:10px;color:var(--text3);max-height:120px;overflow:hidden;line-height:1.5;word-break:break-all;opacity:.6;">${esc(partial.slice(-200))}</div>
+          </div>`;
+      },
+      'json'
+    );
+
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error('JSON 파싱 실패');
+    const result  = JSON.parse(jsonMatch[0]);
+    const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+
+    _impactSave(mk);           // undo 스냅샷
+    _impactData[mk] = result;
+    renderImpactPanel(impactEl, result, label);
+    dbgLog('RES', `[RTL impact LLM] ${JSON.stringify(result)}`, 'res');  // ③ LLM 응답 콘솔
+
+    // 헤더 카운트에 소요 시간 표시
+    const cntEl = getImpactCnt(mk);
+    if (cntEl) cntEl.textContent = `${result.items?.length || 0}개 · ${elapsed}s`;
+
+    dbgLog('INF', `[RTL impact] ${label}: ${result.items?.length || 0}개 항목  ${elapsed}s`, 'inf');
+
+  } catch(e) {
+    impactEl.innerHTML = `<div style="font-family:var(--mono);font-size:11px;color:var(--red);">분석 실패: ${esc(e.message)}</div>`;
+    dbgLog('ERR', `[RTL impact] ${e.message}`, 'err');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'AI 분석';
+  }
+}
+
+// ── RTL impact 데이터 저장소 ─────────────────────────────
+const _impactData = { algo: null, uarch: null };
+const _impactHistory = { algo: [], uarch: [] };  // undo 스택
+const _impactRedo    = { algo: [], uarch: [] };  // redo 스택
+
+// 히스토리에 현재 상태 저장 (변경 전 호출)
+function _impactSave(mk) {
+  const snap = JSON.stringify(_impactData[mk]);
+  _impactHistory[mk].push(snap);
+  if (_impactHistory[mk].length > 30) _impactHistory[mk].shift();
+  _impactRedo[mk] = [];
+  updateUndoRedoBtns(mk);
+  try { refreshAutoParams(); } catch(e) { console.warn(e); }
+}
+
+function impactUndo(mk) {
+  if (!_impactHistory[mk].length) return;
+  _impactRedo[mk].push(JSON.stringify(_impactData[mk]));
+  _impactData[mk] = JSON.parse(_impactHistory[mk].pop());
+  renderImpactPanel(getImpactEl(mk), _impactData[mk], mk === 'algo' ? 'Algorithm' : 'μArch');
+  updateUndoRedoBtns(mk);
+  dbgLog('INF', `[impact undo] ${mk}`, 'inf');
+}
+
+function impactRedo(mk) {
+  if (!_impactRedo[mk].length) return;
+  _impactHistory[mk].push(JSON.stringify(_impactData[mk]));
+  _impactData[mk] = JSON.parse(_impactRedo[mk].pop());
+  renderImpactPanel(getImpactEl(mk), _impactData[mk], mk === 'algo' ? 'Algorithm' : 'μArch');
+  updateUndoRedoBtns(mk);
+  dbgLog('INF', `[impact redo] ${mk}`, 'inf');
+}
+
+function updateUndoRedoBtns(mk) {
+  const prefix = mk === 'algo' ? 'ad' : 'ud';
+  const uBtn = document.getElementById(`${prefix}UndoBtn`);
+  const rBtn = document.getElementById(`${prefix}RedoBtn`);
+  if (uBtn) uBtn.disabled = !_impactHistory[mk].length;
+  if (rBtn) rBtn.disabled = !_impactRedo[mk].length;
+}
+
+function getImpactEl(mk)  { return document.getElementById(mk === 'algo' ? 'adImpact'      : 'udImpact'); }
+function getImpactAdd(mk) { return document.getElementById(mk === 'algo' ? 'adImpactAdd'   : 'udImpactAdd'); }
+function getImpactInput(mk){ return document.getElementById(mk === 'algo' ? 'adImpactInput' : 'udImpactInput'); }
+function getImpactCnt(mk) { return document.getElementById(mk === 'algo' ? 'adImpactCnt'   : 'udImpactCnt'); }
+
+// ── 추가 지시 포함 전체 재분석 ───────────────────────────
+async function reAnalyzeImpact(mk) {
+  const input     = getImpactInput(mk);
+  const extraNote = input?.value.trim() || '';
+  const pairsData = mk === 'algo' ? algoPairs : uarchPairs;
+  const label     = mk === 'algo' ? 'Algorithm' : 'μArch';
+  const impactEl  = getImpactEl(mk);
+  const btn       = document.getElementById(mk === 'algo' ? 'adAnalyzeBtn' : 'udAnalyzeBtn');
+
+  if (!pairsData.length) {
+    impactEl.innerHTML = '<div style="font-family:var(--mono);font-size:12px;color:var(--text3);">먼저 diff를 생성하세요</div>';
+    return;
+  }
+
+  const host  = (document.getElementById('oHost').value||'').replace(/\/+$/, '');
+  const model = getSelectedModel();
+
+  const isFirst = !_impactData[mk]?.items?.length;
+  if (btn) { btn.disabled = true; btn.textContent = isFirst ? '분석 중…' : '재분석 중…'; }
+
+  const t0 = Date.now();
+  impactEl.innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:10px;padding:4px 0;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span class="spin" style="display:inline-block;font-size:14px;animation:spin .8s linear infinite;">◌</span>
+        <span style="font-family:var(--mono);font-size:12px;color:var(--amber);">재분석 중…${extraNote ? ' (추가 지시 포함)' : ''}</span>
+      </div>
+      <div id="${mk}-reanalyze-preview" style="font-family:var(--mono);font-size:11px;color:var(--text3);max-height:120px;overflow:hidden;line-height:1.5;word-break:break-all;opacity:.6;"></div>
+    </div>`;
+
+  const diffItems = pairsData.map(p => {
+    const lines = diffLines(
+      (p.a || '').split('\n'),
+      (p.b || '').split('\n')
+    ).filter(x => x.t !== 's').map(x => `${x.t === 'a' ? '+' : '-'} ${x.x.trim()}`);
+    return `### ${p.label}\n${lines.slice(0, 80).join('\n') || '(변경 없음)'}`;
+  }).join('\n\n');
+
+  // 기존 항목 현황도 참고로 전달
+  const existingItems = _impactData[mk]?.items?.length
+    ? `\n\nCurrently extracted items (${_impactData[mk].items.length} items):\n` +
+      _impactData[mk].items.map((it, i) =>
+        `${i+1}. [${it.priority?.toUpperCase()}][${it.category}] ${it.change}`
+      ).join('\n')
+    : '';
+
+  const extraSection = extraNote
+    ? `\n\nAdditional instruction from engineer:\n"${extraNote}"\nPlease incorporate this when extracting and classifying items.`
+    : '';
+
+  // ID 접두어: label 기반
+  const idPrefix = mk === 'algo' ? 'ALGO' : 'ARCH';
+
+  // 기존 ID 목록 (중복 방지)
+  const existingIds = (_impactData[mk]?.items || [])
+    .map(it => it.id).filter(Boolean).join(', ') || 'none';
+
+  // 현재 RTL 파일 목록 (포트 영향 판단용)
+  const rtlFileList = rtlFiles.length
+    ? `Available RTL files: ${rtlFiles.map(f => f.name).join(', ')}`
+    : 'RTL files: (not loaded yet)';
+
+  const prompt = `You are an expert RTL (Verilog/SystemVerilog) engineer.
+
+Analyze the following ${label} diff and extract ONLY the changes directly relevant to RTL implementation.
+${existingItems}${extraSection}
+
+${rtlFileList}
+
+${label} Diff:
+${diffItems}
+
+Respond in JSON only (no markdown):
+{
+  "items": [
+    {
+      "id": "${idPrefix}-001",
+      "category": "port|signal|timing|parameter|logic|interface",
+      "priority": "high|med|low",
+      "change": "brief description of what changed",
+      "rtl_impact": "what RTL code needs to change (specific construct: signal width, port direction, always block, parameter, etc.)",
+      "target_modules": ["primary .v files that must be modified"],
+      "port_impact": ["other .v files affected via port/interface changes (bit width, added/removed/renamed ports)"],
+      "affected": ["signal or port names involved"]
+    }
+  ],
+  "summary": "one-line overall RTL impact summary"
+}
+
+Rules:
+- Assign a UNIQUE sequential ID to every item using prefix ${idPrefix} (e.g., ${idPrefix}-001, ${idPrefix}-002). No duplicates. Already used IDs: [${existingIds}]
+- For every change, identify target_modules: the .v file(s) that must be directly modified
+- Check port_impact: if the change alters port bit-width, adds/removes/renames ports, or changes interface — list ALL other .v files that instantiate or connect to those ports
+- Only include changes that require RTL code modification
+- Incorporate the engineer's additional instruction if provided
+- Be specific about RTL constructs`;
+
+  try {
+    let raw = '';
+    await callLLM(host, model, 'You are an RTL engineer. Respond only in valid JSON.', prompt,
+      partial => {
+        raw = partial;
+        const tc      = Math.round(partial.length / 3.5);
+        const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+        impactEl.innerHTML = `
+          <div style="display:flex;flex-direction:column;gap:10px;padding:4px 0;">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span class="spin" style="display:inline-block;font-size:14px;animation:spin .8s linear infinite;">◌</span>
+              <span style="font-family:var(--mono);font-size:12px;color:var(--amber);">재분석 중…</span>
+            </div>
+            <div style="font-family:var(--mono);font-size:11px;display:flex;gap:16px;color:var(--text2);">
+              <span>토큰 <span style="color:var(--accent);">~${tc.toLocaleString()}</span></span>
+              <span>경과 <span style="color:var(--accent);">${elapsed}s</span></span>
+            </div>
+            <div style="font-family:var(--mono);font-size:11px;color:var(--text3);max-height:120px;overflow:hidden;line-height:1.5;word-break:break-all;opacity:.6;">${esc(partial.slice(-300))}</div>
+          </div>`;
+      },
+      'json'
+    );
+
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error('JSON 파싱 실패');
+    const result  = JSON.parse(jsonMatch[0]);
+    const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+
+    _impactSave(mk);
+    _impactData[mk] = result;
+    renderImpactPanel(impactEl, result, label);
+
+    const cntEl = getImpactCnt(mk);
+    if (cntEl) cntEl.textContent = `${result.items?.length || 0}개 · ${elapsed}s`;
+
+    dbgLog('RES', `[RTL impact 재분석] ${label}: ${result.items?.length || 0}개 항목  ${elapsed}s`, 'res');
+    dbgLog('RES', `[RTL impact LLM] ${JSON.stringify(result)}`, 'res');
+
+    // 입력값은 유지 (사용자가 직접 지울 수 있도록)
+    if (input) input.style.borderColor = '';
+
+  } catch(e) {
+    impactEl.innerHTML = `<div style="font-family:var(--mono);font-size:12px;color:var(--red);">재분석 실패: ${esc(e.message)}</div>`;
+    dbgLog('ERR', `[RTL impact 재분석] ${e.message}`, 'err');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'AI 분석'; }
+  }
+}
+
+// ── 항목 추가 (자연어 → LLM 구조화) ─────────────────────
+async function addImpactItem(mk) {
+  const input = getImpactInput(mk);
+  const text  = input?.value.trim();
+  if (!text) return;
+
+  const host  = (document.getElementById('oHost').value||'').replace(/\/+$/, '');
+  const model = getSelectedModel();
+
+  input.disabled = true;
+  input.value    = '분석 중…';
+
+  const prompt = `Classify this RTL change description and respond in JSON only:
+"${text}"
+
+{
+  "category": "port|signal|timing|parameter|logic|interface",
+  "priority": "high|med|low",
+  "change": "concise description",
+  "rtl_impact": "specific RTL construct to modify",
+  "affected": ["module_or_signal"]
+}`;
+
+  try {
+    let raw = '';
+    await callLLM(host, model, 'Respond only in valid JSON.', prompt, p => { raw = p; }, 'json-sm');
+    const m = raw.match(/\{[\s\S]*\}/);
+    if (!m) throw new Error('JSON 파싱 실패');
+    const item = { ...JSON.parse(m[0]), _userAdded: true };
+
+    _impactSave(mk);  // undo 저장
+    if (!_impactData[mk]) _impactData[mk] = { items: [], summary: '' };
+    _impactData[mk].items.push(item);
+    renderImpactPanel(getImpactEl(mk), _impactData[mk], mk === 'algo' ? 'Algorithm' : 'μArch');
+    updateImpactCnt(mk);
+    input.value = '';
+    dbgLog('INF', `[impact add] ${mk}: "${item.change}"`, 'inf');
+  } catch(e) {
+    dbgLog('ERR', `[impact add] ${e.message}`, 'err');
+    input.value = '';
+    alert(`항목 추가 실패: ${e.message}`);
+  } finally {
+    input.disabled = false;
+    input.focus();
+  }
+}
+
+// ── 항목 삭제 ─────────────────────────────────────────────
+function deleteImpactItem(mk, idx) {
+  if (!_impactData[mk]) return;
+  _impactSave(mk);
+  _impactData[mk].items.splice(idx, 1);
+  renderImpactPanel(getImpactEl(mk), _impactData[mk], mk === 'algo' ? 'Algorithm' : 'μArch');
+  updateImpactCnt(mk);
+}
+
+// ── 항목 인라인 수정 (카드 내부 폼) ──────────────────────
+function editImpactItem(mk, idx) {
+  const item = _impactData[mk]?.items[idx];
+  if (!item) return;
+  const el = document.getElementById(`impact-item-${mk}-${idx}`);
+  if (!el) return;
+
+  el.innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:6px;">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
+        <span style="font-family:var(--mono);font-size:10px;color:var(--text3);">ID</span>
+        <input id="ei-id-${mk}-${idx}" value="${esc(item.id||'')}"
+          style="width:110px;font-family:var(--mono);font-size:11px;background:var(--bg);border:1px solid var(--b2);color:var(--text3);padding:3px 7px;border-radius:4px;outline:none;">
+        <select id="ei-pri-${mk}-${idx}" style="font-family:var(--mono);font-size:11px;background:var(--bg);border:1px solid var(--b2);color:var(--text);padding:3px 6px;border-radius:4px;outline:none;">
+          <option value="high" ${item.priority==='high'?'selected':''}>HIGH</option>
+          <option value="med"  ${item.priority==='med' ?'selected':''}>MED</option>
+          <option value="low"  ${item.priority==='low' ?'selected':''}>LOW</option>
+        </select>
+        <select id="ei-cat-${mk}-${idx}" style="font-family:var(--mono);font-size:11px;background:var(--bg);border:1px solid var(--b2);color:var(--text);padding:3px 6px;border-radius:4px;outline:none;">
+          ${['port','signal','timing','parameter','logic','interface'].map(c =>
+            `<option value="${c}" ${item.category===c?'selected':''}>${c}</option>`).join('')}
+        </select>
+      </div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--text3);">변경 내용</div>
+      <input id="ei-change-${mk}-${idx}" value="${esc(item.change)}"
+        style="font-family:var(--mono);font-size:11px;background:var(--bg);border:1px solid var(--accent);color:var(--text);padding:4px 8px;border-radius:4px;outline:none;width:100%;">
+      <div style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-top:2px;">RTL 수정 대상</div>
+      <input id="ei-rtl-${mk}-${idx}" value="${esc(item.rtl_impact)}"
+        style="font-family:var(--mono);font-size:11px;background:var(--bg);border:1px solid var(--b2);color:var(--text);padding:4px 8px;border-radius:4px;outline:none;width:100%;">
+      <div style="font-family:var(--mono);font-size:10px;color:var(--accent);margin-top:2px;">수정 필요 .v 파일 (쉼표 구분)</div>
+      <input id="ei-tgt-${mk}-${idx}" value="${esc((item.target_modules||[]).join(', '))}"
+        placeholder="예) alu_core.v, datapath.v"
+        style="font-family:var(--mono);font-size:11px;background:var(--bg);border:1px solid var(--accent);color:var(--text);padding:4px 8px;border-radius:4px;outline:none;width:100%;">
+      <div style="font-family:var(--mono);font-size:10px;color:var(--red);margin-top:2px;">포트 영향 .v 파일 (쉼표 구분)</div>
+      <input id="ei-port-${mk}-${idx}" value="${esc((item.port_impact||[]).join(', '))}"
+        placeholder="예) top.v, controller.v (포트 폭/추가/삭제 영향)"
+        style="font-family:var(--mono);font-size:11px;background:var(--bg);border:1px solid rgba(255,125,135,.4);color:var(--text);padding:4px 8px;border-radius:4px;outline:none;width:100%;">
+      <div style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-top:2px;">관련 신호/포트명 (쉼표 구분)</div>
+      <input id="ei-aff-${mk}-${idx}" value="${esc((item.affected||[]).join(', '))}"
+        style="font-family:var(--mono);font-size:11px;background:var(--bg);border:1px solid var(--b2);color:var(--text);padding:4px 8px;border-radius:4px;outline:none;width:100%;">
+      <div style="display:flex;gap:5px;align-items:center;margin-top:4px;">
+        <button class="btn-g btn" style="font-size:11px;padding:4px 13px;margin-left:auto;" onclick="saveImpactEdit('${mk}',${idx})">✓ 저장</button>
+        <button class="btn-g btn" style="font-size:11px;padding:4px 11px;" onclick="renderImpactPanel(getImpactEl('${mk}'),_impactData['${mk}'],'${mk==='algo'?'Algorithm':'μArch'}')">✕</button>
+      </div>
+      <!-- LLM에 수정 요청 -->
+      <div style="border-top:1px solid var(--border);margin-top:4px;padding-top:6px;display:flex;gap:5px;">
+        <input id="ei-llm-${mk}-${idx}" type="text" placeholder="LLM에 수정 요청… 예) target_modules에 top.v 추가, priority를 high로"
+          style="flex:1;font-family:var(--mono);font-size:11px;background:var(--bg);border:1px solid var(--b2);color:var(--text);padding:4px 8px;border-radius:4px;outline:none;"
+          onkeydown="if(event.key==='Enter')llmEditItem('${mk}',${idx})">
+        <button class="btn-g btn" style="font-size:11px;padding:4px 13px;white-space:nowrap;color:var(--accent);" onclick="llmEditItem('${mk}',${idx})">AI 수정</button>
+      </div>
+    </div>`;
+
+  document.getElementById(`ei-change-${mk}-${idx}`)?.focus();
+}
+
+function saveImpactEdit(mk, idx) {
+  const item = _impactData[mk]?.items[idx];
+  if (!item) return;
+  _impactSave(mk);
+  item.id         = document.getElementById(`ei-id-${mk}-${idx}`)?.value.trim()    || item.id;
+  item.change     = document.getElementById(`ei-change-${mk}-${idx}`)?.value.trim() || item.change;
+  item.rtl_impact = document.getElementById(`ei-rtl-${mk}-${idx}`)?.value.trim()   || item.rtl_impact;
+  item.priority   = document.getElementById(`ei-pri-${mk}-${idx}`)?.value          || item.priority;
+  item.category   = document.getElementById(`ei-cat-${mk}-${idx}`)?.value          || item.category;
+  const affRaw  = document.getElementById(`ei-aff-${mk}-${idx}`)?.value.trim();
+  const tgtRaw  = document.getElementById(`ei-tgt-${mk}-${idx}`)?.value.trim();
+  const portRaw = document.getElementById(`ei-port-${mk}-${idx}`)?.value.trim();
+  if (affRaw  !== undefined) item.affected       = affRaw.split(',').map(s=>s.trim()).filter(Boolean);
+  if (tgtRaw  !== undefined) item.target_modules = tgtRaw.split(',').map(s=>s.trim()).filter(Boolean);
+  if (portRaw !== undefined) item.port_impact    = portRaw.split(',').map(s=>s.trim()).filter(Boolean);
+  item._userEdited = true;
+  renderImpactPanel(getImpactEl(mk), _impactData[mk], mk === 'algo' ? 'Algorithm' : 'μArch');
+  dbgLog('INF', `[impact edit] ${mk} #${idx} 저장 — "${item.change}"`, 'inf');
+}
+
+// ── LLM에 항목 수정 요청 ──────────────────────────────────
+async function llmEditItem(mk, idx) {
+  const item    = _impactData[mk]?.items[idx];
+  const request = document.getElementById(`ei-llm-${mk}-${idx}`)?.value.trim();
+  if (!item || !request) return;
+
+  const host  = (document.getElementById('oHost').value||'').replace(/\/+$/, '');
+  const model = getSelectedModel();
+
+  const llmInput = document.getElementById(`ei-llm-${mk}-${idx}`);
+  if (llmInput) { llmInput.disabled = true; llmInput.value = 'AI 수정 중…'; }
+
+  const prompt = `You are an RTL engineer. Modify the following RTL change item according to the user's request.
+
+Current item:
+${JSON.stringify(item, null, 2)}
+
+User request: "${request}"
+
+Respond in JSON only with the modified item (same structure, all fields required):
+{
+  "category": "port|signal|timing|parameter|logic|interface",
+  "priority": "high|med|low",
+  "change": "...",
+  "rtl_impact": "...",
+  "affected": [...]
+}`;
+
+  try {
+    let raw = '';
+    await callLLM(host, model, 'Respond only in valid JSON.', prompt, p => { raw = p; }, 'json-sm');
+    dbgLog('RES', `[impact llm-edit] 요청: "${request}" → ${raw}`, 'res');  // ③ 응답 콘솔 출력
+
+    const m = raw.match(/\{[\s\S]*\}/);
+    if (!m) throw new Error('JSON 파싱 실패');
+    const updated = JSON.parse(m[0]);
+
+    _impactSave(mk);
+    Object.assign(_impactData[mk].items[idx], updated, { _userEdited: true });
+    renderImpactPanel(getImpactEl(mk), _impactData[mk], mk === 'algo' ? 'Algorithm' : 'μArch');
+    dbgLog('INF', `[impact llm-edit] ${mk} #${idx} — "${updated.change}"`, 'inf');
+  } catch(e) {
+    dbgLog('ERR', `[impact llm-edit] ${e.message}`, 'err');
+    if (llmInput) { llmInput.value = ''; }
+    alert(`AI 수정 실패: ${e.message}`);
+  } finally {
+    if (llmInput) { llmInput.disabled = false; llmInput.value = ''; }
+  }
+}
+
+function updateImpactCnt(mk) {
+  const cnt = _impactData[mk]?.items?.length || 0;
+  const el  = getImpactCnt(mk);
+  if (el) el.textContent = cnt ? `${cnt}개` : '';
+}
+
+// ── 렌더링 (수정·삭제 버튼 포함) ─────────────────────────
+function renderImpactPanel(el, result, label) {
+  const mk    = label === 'Algorithm' ? 'algo' : 'uarch';
+  const items = result?.items || [];
+
+  const addEl = getImpactAdd(mk);
+  if (addEl) addEl.style.display = '';
+
+  if (!items.length) {
+    el.innerHTML = `
+      <div style="font-family:var(--mono);font-size:11px;color:var(--green);padding:8px 0;">
+        ✓ RTL 코드 수정이 필요한 변경점 없음 — 하단에서 직접 추가 가능
+      </div>
+      ${result?.summary ? `<div style="font-family:var(--mono);font-size:11px;color:var(--text3);margin-top:4px;">${esc(result.summary)}</div>` : ''}`;
+    updateImpactCnt(mk);
+    return;
+  }
+
+  const catTag = c => {
+    const map = { port:'port', signal:'sig', timing:'timing', parameter:'param', logic:'logic', interface:'port' };
+    return `<span class="impact-tag ${map[c]||'logic'}">${c.toUpperCase()}</span>`;
+  };
+
+  const moduleTag = (name, isPort) => {
+    const color = isPort ? 'var(--red)' : 'var(--accent)';
+    const bg    = isPort ? 'rgba(255,125,135,.15)' : 'rgba(106,184,255,.15)';
+    return `<span style="font-family:var(--mono);font-size:10px;padding:1px 6px;border-radius:3px;background:${bg};color:${color};margin-right:3px;">${esc(name)}</span>`;
+  };
+
+  const html = items.map((item, i) => {
+    const idBadge = item.id
+      ? `<span style="font-family:var(--mono);font-size:10px;padding:1px 7px;border-radius:3px;background:var(--s2);color:var(--text3);border:1px solid var(--border);margin-right:4px;">${esc(item.id)}</span>`
+      : '';
+
+    const targetMods = item.target_modules?.length
+      ? `<div class="impact-ref" style="margin-top:5px;">
+           <span style="color:var(--text3);">▸ 수정 필요: </span>
+           ${item.target_modules.map(m => moduleTag(m, false)).join('')}
+         </div>`
+      : '';
+
+    const portImpact = item.port_impact?.length
+      ? `<div class="impact-ref" style="margin-top:3px;">
+           <span style="color:var(--red);">▸ 포트 영향: </span>
+           ${item.port_impact.map(m => moduleTag(m, true)).join('')}
+           <span style="font-family:var(--mono);font-size:10px;color:var(--text3);">(연결부 수정 필요)</span>
+         </div>`
+      : '';
+
+    const affectedRow = item.affected?.length
+      ? `<div class="impact-ref">▸ 신호/포트: ${item.affected.map(esc).join(', ')}</div>`
+      : '';
+
+    return `
+    <div class="impact-item ${item.priority||'low'}" id="impact-item-${mk}-${i}">
+      <div style="display:flex;align-items:center;gap:4px;margin-bottom:5px;flex-wrap:wrap;">
+        ${idBadge}
+        ${catTag(item.category)}
+        ${item.priority==='high' ? `<span style="font-family:var(--mono);font-size:11px;color:var(--red);">HIGH</span>` :
+          item.priority==='med'  ? `<span style="font-family:var(--mono);font-size:11px;color:var(--amber);">MED</span>` : ''}
+        ${item._userAdded  ? `<span style="font-family:var(--mono);font-size:11px;color:var(--purple);">USER</span>` : ''}
+        ${item._userEdited ? `<span style="font-family:var(--mono);font-size:11px;color:var(--amber);">EDITED</span>` : ''}
+        <div style="margin-left:auto;display:flex;gap:3px;">
+          <button class="sfile-del" style="font-size:11px;opacity:.6;" onclick="editImpactItem('${mk}',${i})" title="수정">✎</button>
+          <button class="sfile-del" style="font-size:11px;opacity:.6;" onclick="deleteImpactItem('${mk}',${i})" title="삭제">✕</button>
+        </div>
+      </div>
+      <div class="impact-desc">${esc(item.change)}</div>
+      <div class="impact-ref">▸ RTL: ${esc(item.rtl_impact)}</div>
+      ${targetMods}
+      ${portImpact}
+      ${affectedRow}
+    </div>`;
+  }).join('');
+
+  el.innerHTML = `
+    ${result?.summary ? `<div style="font-family:var(--mono);font-size:12px;color:var(--text2);margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--border);">${esc(result.summary)}</div>` : ''}
+    ${html}`;
+
+  updateImpactCnt(mk);
+}
+// ── 드래그 분할 핸들 ─────────────────────────────────────
+(function() {
+  let _grid = null, _handle = null, _startX = 0, _startRight = 340;
+
+  window.startSplit = function(e, gridId, handleId) {
+    _grid   = document.getElementById(gridId);
+    _handle = document.getElementById(handleId);
+    if (!_grid) return;
+
+    // 현재 우측 패널 너비 파악
+    const cols = _grid.style.gridTemplateColumns;
+    const match = cols.match(/([\d.]+)px$/);
+    _startRight = match ? parseFloat(match[1]) : 340;
+    _startX = e.clientX;
+
+    _handle.classList.add('dragging');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup',   onUp);
+    e.preventDefault();
+  };
+
+  function onMove(e) {
+    if (!_grid) return;
+    const totalW = _grid.getBoundingClientRect().width;
+    const delta  = _startX - e.clientX;           // 왼쪽으로 드래그 → 우측 패널 커짐
+    const newRight = Math.min(
+      Math.max(_startRight + delta, 200),           // 최소 200px
+      totalW - 200                                  // 최대 (전체 - 200)px
+    );
+    _grid.style.gridTemplateColumns = `1fr 5px ${newRight}px`;
+  }
+
+  function onUp() {
+    if (_handle) _handle.classList.remove('dragging');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup',   onUp);
+    _grid = _handle = null;
+  }
+})();
+// ── 수직 분할 핸들 (Result 탭) ────────────────────────────
+(function() {
+  let _handle = null, _startY = 0, _startH = 0, _target = null, _dir = 'down';
+
+  window.startVSplit = function(e, handleId, targetId, dir) {
+    _handle = document.getElementById(handleId);
+    if (!_handle) return;
+
+    // targetId가 없으면 기존 방식(monPanel/iterPanel)
+    if (targetId) {
+      _target = document.getElementById(targetId);
+      _dir    = dir || 'down';  // 'up': 위 패널 커짐, 'down': 아래 패널 커짐
+    } else {
+      _target = handleId === 'resHandleTop'
+        ? document.getElementById('monPanel')
+        : document.getElementById('iterPanel');
+      _dir = handleId === 'resHandleTop' ? 'down' : 'up';
+    }
+    _startY = e.clientY;
+    _startH = _target.getBoundingClientRect().height;
+    _handle.classList.add('dragging');
+    document.body.style.cursor = 'row-resize';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', onVMove);
+    document.addEventListener('mouseup',   onVUp);
+    e.preventDefault();
+  };
+
+  function onVMove(e) {
+    if (!_target) return;
+    const delta = e.clientY - _startY;
+    let newH;
+    if (_dir === 'up') {
+      // 위쪽 패널: 드래그 위로 → 커짐 (delta 반전)
+      newH = Math.max(44, Math.min(_startH - delta, 500));
+    } else {
+      // 아래쪽 패널: 드래그 아래로 → 커짐
+      newH = Math.max(44, Math.min(_startH + delta, 500));
+    }
+    _target.style.height = _target.style.maxHeight = newH + 'px';
+    _target.style.flexShrink = '0';
+  }
+
+  function onVUp() {
+    if (_handle) _handle.classList.remove('dragging');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    document.removeEventListener('mousemove', onVMove);
+    document.removeEventListener('mouseup',   onVUp);
+    _handle = _target = null;
+  }
+})();
+
+function _syncResultHandles() {
+  const mon  = document.getElementById('monPanel').style.display  !== 'none';
+  const iter = document.getElementById('iterPanel').style.display !== 'none';
+  document.getElementById('resHandleTop').style.display = mon  ? '' : 'none';
+  document.getElementById('resHandleBot').style.display = iter ? '' : 'none';
+}
+
+function buildImpactText(mk) {
+  const data = _impactData[mk];
+  if (!data || !data.items?.length) return '';
+
+  const priorityOrder = { high: 0, med: 1, low: 2 };
+  const sorted = [...data.items].sort((a,b) =>
+    (priorityOrder[a.priority]??2) - (priorityOrder[b.priority]??2)
+  );
+
+  const lines = sorted.map(item => {
+    const id   = item.id   ? `[${item.id}] ` : '';
+    const pri  = item.priority?.toUpperCase() || 'LOW';
+    const cat  = item.category?.toUpperCase()  || 'LOGIC';
+    const user = item._userAdded ? ' [USER-ADDED]' : (item._userEdited ? ' [USER-EDITED]' : '');
+    const tgt  = item.target_modules?.length
+      ? `\n    → Target files: ${item.target_modules.join(', ')}`
+      : '';
+    const port = item.port_impact?.length
+      ? `\n    → Port-impacted files (check connections): ${item.port_impact.join(', ')}`
+      : '';
+    const aff  = item.affected?.length
+      ? `\n    → Signals/ports: ${item.affected.join(', ')}`
+      : '';
+    return `  ${id}[${pri}][${cat}]${user} ${item.change}\n    → RTL: ${item.rtl_impact}${tgt}${port}${aff}`;
+  });
+
+  const header = data.summary ? `  Summary: ${data.summary}\n` : '';
+  return header + lines.join('\n');
+}
+
+function logImpactUsage() {
+  const algoN  = _impactData.algo?.items?.length  || 0;
+  const uarchN = _impactData.uarch?.items?.length || 0;
+  if (algoN || uarchN) {
+    dbgLog('INF', `변환 컨텍스트 — Algo impact ${algoN}개 · μArch impact ${uarchN}개 (새 컨텍스트 시작)`, 'inf');
+  } else {
+    dbgLog('INF', '⚠ 변환 컨텍스트 — impact 데이터 없음. AI 분석을 먼저 실행하세요.', 'inf');
+  }
+}
+
+function monShow() {
+  document.getElementById('monPanel').style.display = '';
+  document.getElementById('monSteps').innerHTML = '';
+  _syncResultHandles();
+}
+function monHide() {
+  document.getElementById('monPanel').style.display = 'none';
+  _syncResultHandles();
+}
+function monSetStatus(msg, color) {
+  const el = document.getElementById('monStatus');
+  el.textContent = msg;
+  el.style.color = color || 'var(--amber)';
+}
+function monSetTokens(msg) {
+  document.getElementById('monTokens').textContent = msg;
+}
+function monAddStep(id, icon, label, detail, cls) {
+  const wrap = document.getElementById('monSteps');
+  const div = document.createElement('div');
+  div.className = `mon-step ${cls||''}`;
+  div.id = `mon-${id}`;
+  div.innerHTML = `<span class="mon-icon">${icon}</span><span class="mon-label">${esc(label)}</span><span class="mon-detail" id="mon-d-${id}">${esc(detail||'')}</span>`;
+  wrap.appendChild(div);
+  wrap.scrollTop = wrap.scrollHeight;
+  return div;
+}
+function monUpdateStep(id, icon, cls, detail) {
+  const el = document.getElementById(`mon-${id}`);
+  if (!el) return;
+  el.className = `mon-step ${cls||''}`;
+  if (icon !== null) el.querySelector('.mon-icon').innerHTML = icon;
+  if (detail !== undefined) {
+    const d = document.getElementById(`mon-d-${id}`);
+    if (d) d.textContent = detail;
+  }
+  el.parentElement.scrollTop = el.parentElement.scrollHeight;
+}
+function monUpdateDetail(id, detail) {
+  const d = document.getElementById(`mon-d-${id}`);
+  if (d) { d.textContent = detail; d.parentElement.parentElement.scrollTop = d.parentElement.parentElement.scrollHeight; }
+}
+
+// ── Mode 1: 순차 처리 ─────────────────────────────────────
+async function runSequential(ctx, startIdx = 0) {
+  const { host, model } = ctx;
+
+  // 컨텍스트 오버헤드: impact 데이터 기반 프롬프트 고정 부분
+  const ctxSection  = buildContextSection();
+  const ctxOverhead = estimateTokens(ctxSection) + 300;
+
+  _batchAborted = false;
+  monShow();
+  showStopBtn(); hideResumeBtn();
+
+  const totalRemain = rtlFiles.length - startIdx;
+  monSetStatus(
+    `${startIdx > 0 ? `재시작 — ${startIdx}번째부터 ` : ''}${totalRemain}개 파일 처리`,
+    'var(--amber)'
+  );
+  if (startIdx > 0) {
+    monAddStep('resume-note', '↺', '재시작',
+      `${startIdx}개 파일 완료 상태 유지 · 새 컨텍스트로 재시작`, 'done');
+  }
+
+  // impact 데이터 확인 로그
+  const algoN  = _impactData.algo?.items?.length  || 0;
+  const uarchN = _impactData.uarch?.items?.length || 0;
+  monAddStep('ctx-note', '◎', '변환 컨텍스트',
+    `Algo ${algoN}개 · μArch ${uarchN}개 변경점 · 파일당 독립 컨텍스트`, 'done');
+  dbgLog('INF',
+    `[순차] startIdx=${startIdx}  파일${rtlFiles.length}개  impact(algo=${algoN} uarch=${uarchN})  overhead≈${ctxOverhead}tok`,
+    'inf');
+
+  setStatus('lo', `순차 처리 — ${startIdx}/${rtlFiles.length}`);
+
+  for (let idx = startIdx; idx < rtlFiles.length; idx++) {
+    if (_batchAborted) {
+      monSetStatus(`중단됨 — ${idx}/${rtlFiles.length} 완료`, 'var(--amber)');
+      setStatus('lo', `중단됨 — ${idx}/${rtlFiles.length}`);
+      dbgLog('INF', `변환 중단: ${idx}번째에서 정지`, 'inf');
+      hideStopBtn(); showResumeBtn();
+      return;
+    }
+
+    const f = rtlFiles[idx];
+    f.status = 'run'; f.result = ''; f.changes = [];
+    renderRtl(); renderResTabs(); showRes(idx);
+
+    const fileStepId = `f${idx}`;
+    monAddStep(fileStepId, '<span class="spin">◌</span>',
+      `[${idx+1}/${rtlFiles.length}] ${f.name}`, '준비 중…', 'active');
+    monSetStatus(`[${idx+1}/${rtlFiles.length}] ${f.name} 처리 중`, 'var(--amber)');
+
+    // 파일별 독립 청크 (이전 파일 시그니처 없음)
+    const chunks    = getChunks(f.content, ctxOverhead);
+    const isChunked = chunks.length > 1;
+    const chunkResults = [];
+    const chunkChanges = [];
+
+    if (isChunked) {
+      monUpdateDetail(fileStepId, `module ${chunks.length}개로 분할`);
+      dbgLog('INF', `청크 분할: ${chunks.length}개`, 'inf');
+    }
+
+    for (let ci = 0; ci < chunks.length; ci++) {
+      const chunk      = chunks[ci];
+      const chunkLabel = isChunked ? `${f.name} [chunk ${ci+1}/${chunks.length}]` : f.name;
+      const prompt     = buildPrompt(chunk, chunkLabel);  // impact 데이터만, 새 컨텍스트
+      const promptTokens = estimateTokens(prompt);
+
+      const chunkStepId = isChunked ? `f${idx}c${ci}` : fileStepId;
+      if (isChunked) {
+        monAddStep(chunkStepId, '<span class="spin">◌</span>',
+          `  └ chunk ${ci+1}/${chunks.length}`,
+          `~${promptTokens.toLocaleString()} tokens`, 'active');
+      } else {
+        monUpdateDetail(fileStepId, `~${promptTokens.toLocaleString()} tokens 전송 중…`);
+      }
+
+      dbgLog('REQ',
+        `[${idx+1}/${rtlFiles.length}]${isChunked ? ` chunk${ci+1}/${chunks.length}` : ''}  ${f.name}  ~${promptTokens}tok`,
+        'req');
+
+      if (promptTokens > getTokenBudget() * 1.2)
+        dbgLog('INF', `⚠ 토큰 예산 초과 (${promptTokens} > ${getTokenBudget()})`, 'inf');
+
+      try {
+        const t0 = Date.now();
+        let lastTc = 0;
+
+        const onChunk = (partial) => {
+          f.result = chunkResults.join('\n') + '\n' + partial;
+          const tc = Math.round(partial.length / 3.5);
+          if (tc - lastTc > 50) {
+            lastTc = tc;
+            const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+            monSetTokens(`↓ ~${tc.toLocaleString()} tokens  ${elapsed}s`);
+            monUpdateDetail(chunkStepId, `생성 중… ~${tc.toLocaleString()} tokens`);
+          }
+          if (resActive === idx) {
+            let rendered = '';
+            f.result.split('\n').forEach(line => {
+              const e = esc(line);
+              if      (/\/\/ BOTH:/.test(line))  rendered += `<span class="hl-b">${e}</span>`;
+              else if (/\/\/ ALGO:/.test(line))  rendered += `<span class="hl-a">${e}</span>`;
+              else if (/\/\/ UARCH:/.test(line)) rendered += `<span class="hl-u">${e}</span>`;
+              else rendered += e + '\n';
+            });
+            const ra = document.getElementById(`ra${idx}`);
+            if (ra) { ra.innerHTML = rendered; ra.scrollTop = ra.scrollHeight; }
+          }
+        };
+
+        const { raw, finish } = await callLLM(
+          host, model,
+          'You are an expert RTL (Verilog/SystemVerilog) engineer. Follow all instructions exactly.',
+          prompt, onChunk,
+          'rtl'
+        );
+        const elapsed   = ((Date.now() - t0) / 1000).toFixed(1);
+        const outTokens = Math.round(raw.length / 3.5);
+        dbgLog('RES', `[${chunkLabel}] ~${outTokens.toLocaleString()}tok  finish=${finish}  ${elapsed}s`, 'res');
+
+        monUpdateStep(chunkStepId, '✓', 'done',
+          `완료 — ~${outTokens.toLocaleString()} tokens  ${elapsed}s`);
+
+        const parsed = parseResult(raw, f.name);
+        chunkResults.push(parsed.result);
+        chunkChanges.push(...parsed.changes);
+
+      } catch(e) {
+        dbgLog('ERR', `[${chunkLabel}] ${e.message}`, 'err');
+        monUpdateStep(chunkStepId, '✕', 'err', `오류: ${e.message}`);
+        chunkResults.push(`// 오류: ${e.message}\n${chunk}`);
+        if (/fetch|network|50[234]/.test(e.message)) {
+          monSetStatus('서버 오류 — ↺ 이어서 변환 버튼으로 재시작 가능', 'var(--red)');
+          showResumeBtn();
+        }
+      }
+    }
+
+    f.result  = chunkResults.join('\n\n');
+    f.changes = chunkChanges;
+    f.status  = chunkResults.some(r => r.startsWith('// 오류')) ? 'err' : 'ok';
+
+    monUpdateStep(fileStepId, '✓', 'done', `완료`);
+    renderRtl(); renderResTabs(); showRes(idx);
+    setStatus('lo', `순차 처리 — ${idx+1}/${rtlFiles.length}`);
+  }
+
+  const ok = rtlFiles.filter(f => f.status === 'ok').length;
+  monSetStatus(`완료 ${ok}/${rtlFiles.length}`, ok === rtlFiles.length ? 'var(--green)' : 'var(--amber)');
+  monSetTokens('');
+  hideStopBtn();
+  if (ok < rtlFiles.length) showResumeBtn(); else hideResumeBtn();
+  if (ok > 0) showIterPanel();
+  setStatus('ok', `순차 완료 ${ok}/${rtlFiles.length}`);
+  dbgLog('RES', `✓ 순차 완료 ${ok}/${rtlFiles.length}`, 'res');
+}
+
+// ── Mode 2: 단일 컨텍스트 ─────────────────────────────────
+async function runSingleContext(ctx) {
+  const { host, model } = ctx;
+
+  rtlFiles.forEach(f => { f.status = 'run'; f.result = ''; f.changes = []; });
+  renderRtl(); renderResTabs();
+
+  monShow();
+  monSetStatus('단일 컨텍스트 변환 준비 중…', 'var(--amber)');
+
+  const allRtl      = rtlFiles.map(f => `=== File: ${f.name} ===\n${f.content}`).join('\n\n');
+  const ctxSection  = buildContextSection();   // impact 데이터만
+  const totalTokens = Math.round(allRtl.length / 3.5);
+  const algoN  = _impactData.algo?.items?.length  || 0;
+  const uarchN = _impactData.uarch?.items?.length || 0;
+
+  dbgLog('INF', `[단일] ${rtlFiles.length}개 파일  ~${totalTokens.toLocaleString()}tok  impact(algo=${algoN} uarch=${uarchN})`, 'inf');
+  monAddStep('s-ctx',   '◎', '변환 컨텍스트',
+    `Algo ${algoN}개 · μArch ${uarchN}개 변경점`, 'done');
+  monAddStep('s-files', '◎', '파일 묶음',
+    `${rtlFiles.length}개 파일  ~${totalTokens.toLocaleString()} tokens`, 'done');
+
+  const prompt = `You are an expert RTL (Verilog/SystemVerilog) engineer.
+
+Apply the following finalized RTL change points to ALL provided files simultaneously.
+
+Rules:
+- Apply ALL listed change points to every relevant file
+- Each changed/added line: add ONE comment // ALGO: / // UARCH: / // BOTH: <reason>
+- Maintain correct port connections across modules
+- Output format for each file:
+    ===FILE: <filename>===
+    <complete modified RTL code>
+    ===CHANGES: <filename>===
+    SOURCE|TYPE|description
+    (repeat for each file)
+
+${ctxSection}
+
+${allRtl}`;
+
+  const promptTokens = Math.round(prompt.length / 3.5);
+  dbgLog('REQ', `[단일] prompt ~${promptTokens.toLocaleString()} tokens`, 'req');
+  monAddStep('s-llm', '<span class="spin">◌</span>', 'LLM 생성 중',
+    `프롬프트 ~${promptTokens.toLocaleString()} tokens`, 'active');
+  monSetStatus('단일 컨텍스트 변환 중…', 'var(--amber)');
+  setStatus('lo', '단일 컨텍스트 변환 중…');
+
+  try {
+    const t0 = Date.now();
+    let tokenCount = 0;
+    const onChunk = (partial) => {
+      tokenCount = Math.round(partial.length / 3.5);
+      const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+      monSetTokens(`↓ ~${tokenCount.toLocaleString()} tokens  ${elapsed}s`);
+      monUpdateDetail('s-llm', `생성 중… ~${tokenCount.toLocaleString()} tokens  ${elapsed}s`);
+      setStatus('lo', `단일 변환 중… ~${tokenCount.toLocaleString()} tokens`);
+    };
+    const { raw, finish } = await callLLM(host, model,
+      'You are an expert RTL (Verilog/SystemVerilog) engineer. Follow all instructions exactly.',
+      prompt, onChunk,
+      'rtl'
+    );
+    const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+    const outTokens = Math.round(raw.length / 3.5);
+    dbgLog('RES', `단일 응답 ~${outTokens.toLocaleString()} tokens  finish=${finish}  (${elapsed}s)`, 'res');
+    monUpdateStep('s-llm', '✓', 'done', `완료 ~${outTokens.toLocaleString()} tokens  ${elapsed}s`);
+    monSetTokens('');
+
+    // 응답 파싱
+    monAddStep('s-parse', '<span class="spin">◌</span>', '응답 파싱', '파일 분리 중…', 'active');
+    const fileBlocks = raw.split(/===FILE:\s*(.+?)===/).slice(1);
+    for (let i = 0; i < fileBlocks.length; i += 2) {
+      const fname = fileBlocks[i].trim();
+      const body  = fileBlocks[i+1] || '';
+      const f = rtlFiles.find(x => x.name === fname || fname.includes(x.name) || x.name.includes(fname));
+      if (!f) { dbgLog('INF', `파싱: ${fname} 매칭 실패`, 'inf'); continue; }
+
+      const sepIdx = body.indexOf(`===CHANGES: ${fname}===`);
+      f.result  = (sepIdx !== -1 ? body.slice(0, sepIdx) : body).trim();
+      f.changes = (sepIdx !== -1 ? body.slice(sepIdx + `===CHANGES: ${fname}===`.length).trim() : '')
+        .split('\n').filter(l => l.includes('|'));
+      f.status  = 'ok';
+      dbgLog('INF', `파싱: ${fname} → ${f.result.length}chars`, 'inf');
+    }
+
+    rtlFiles.forEach(f => { if (f.status === 'run') { f.status = 'err'; f.result = '// 응답에서 이 파일을 찾지 못했습니다'; } });
+
+    const ok2 = rtlFiles.filter(f => f.status === 'ok').length;
+    monUpdateStep('s-parse', '✓', 'done', `${ok2}/${rtlFiles.length}개 파일 파싱 완료`);
+
+  } catch(e) {
+    dbgLog('ERR', `단일 컨텍스트 오류: ${e.message}`, 'err');
+    monUpdateStep('s-llm',   '✕', 'err', e.message);
+    monUpdateStep('s-parse', '✕', 'err', '파싱 중단');
+    monSetStatus(`오류: ${e.message}`, 'var(--red)');
+    rtlFiles.forEach(f => { f.status = 'err'; f.result = `// 오류: ${e.message}`; });
+    setStatus('er', '변환 실패');
+  }
+
+  renderRtl(); renderResTabs();
+  rtlFiles.forEach((_, i) => showRes(i));
+  showRes(0);
+  const ok = rtlFiles.filter(f=>f.status==='ok').length;
+  monSetStatus(`완료 ${ok}/${rtlFiles.length}`, ok === rtlFiles.length ? 'var(--green)' : 'var(--amber)');
+  setStatus('ok', `단일 완료 ${ok}/${rtlFiles.length}`);
+  dbgLog('RES', `✓ 단일 완료 ${ok}/${rtlFiles.length}`, 'res');
+}
+
+function buildPrompt(rtl, fname) {
+  const ctxSection = buildContextSection();
+  return `You are an expert RTL (Verilog/SystemVerilog) engineer.
+
+File: ${fname}
+
+Apply the following RTL change points to the existing code.
+Each change point has been reviewed and finalized by the engineering team.
+
+Rules:
+- Apply ALL listed change points precisely
+- Each changed/added line: add ONE inline comment — // ALGO: / // UARCH: / // BOTH: <brief reason>
+- Output ONLY the complete modified RTL file (no markdown, no backticks)
+- After the code, output exactly: ===CHANGES===
+- Then list each change: SOURCE|TYPE|description
+  (SOURCE=ALGO/UARCH/BOTH, TYPE=ADD/MOD/REMOVE)
+
+${ctxSection}
+
+=== Existing RTL: ${fname} ===
+${rtl}`;
+}
+
+// ── Result render ─────────────────────────────────────────
+function renderResTabs(){
+  document.getElementById('resTabs').innerHTML=rtlFiles.map((f,i)=>{
+    const cls=f.status==='ok'?'ok':f.status==='err'?'er':'';
+    return`<button class="rtab ${cls} ${i===resActive?'active':''}" onclick="showRes(${i})">${esc(f.name)}</button>`;
+  }).join('');
+}
+function showRes(idx){
+  resActive=idx;renderResTabs();
+  const wrap=document.getElementById('resWrap');
+  const f=rtlFiles[idx];
+  if(!f){wrap.innerHTML='<div class="empty"><div class="ic">⊘</div><p>파일 없음</p></div>';return;}
+  if(f.status==='wait'||f.status==='run'){
+    wrap.innerHTML=`<div class="empty"><div class="ic">${f.status==='run'?'<span class="spinner"></span>':'⊘'}</div><p style="color:var(--amber)">${f.status==='run'?'변환 중…':'대기 중'}</p></div>`;return;
+  }
+  let rendered='';
+  f.result.split('\n').forEach(line=>{
+    const e=esc(line);
+    if(/\/\/ BOTH:/.test(line))     rendered+=`<span class="hl-b">${e}</span>`;
+    else if(/\/\/ ALGO:/.test(line))rendered+=`<span class="hl-a">${e}</span>`;
+    else if(/\/\/ UARCH:/.test(line))rendered+=`<span class="hl-u">${e}</span>`;
+    else if(/\/\/ ITER:/.test(line))rendered+=`<span style="background:rgba(245,184,64,.1);display:block;">${e}</span>`;
+    else rendered+=e+'\n';
+  });
+  const chHtml=f.changes.map(row=>{
+    const p=row.split('|');
+    const src=(p[0]||'').trim(),type=(p[1]||'').trim(),desc=p.slice(2).join('|').trim();
+    const sc=src==='UARCH'?'ua':src==='BOTH'?'add':src==='ITER'?'mod':'mod';
+    const tc=type==='ADD'?'add':type==='REMOVE'?'rem':'mod';
+    const sl=src==='UARCH'?'μARCH':src==='BOTH'?'BOTH':src==='ITER'?'ITER':'ALGO';
+    return`<div class="ci"><span class="pill ${sc}">${sl}</span><span class="pill ${tc}">${type}</span><p>${esc(desc)}</p></div>`;
+  }).join('');
+
+  const verTabs = renderVersionTabs(f, idx);
+  const hasChanges = f.changes.length > 0;
+
+  wrap.innerHTML=`
+    ${verTabs}
+    <div class="ph" style="flex-shrink:0;">
+      <div class="pt"><div class="dot ${f.status==='ok'?'g':''}" style="${f.status==='err'?'background:var(--red)':''}"></div>${esc(f.name)}
+        ${f.history?.length ? `<span style="font-family:var(--mono);font-size:12px;color:var(--amber);margin-left:6px;">${f.history.length}회 개선됨</span>` : ''}
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div class="legend">
+          <div class="li"><div class="ld ld-a"></div>Algo</div>
+          <div class="li"><div class="ld ld-u"></div>μArch</div>
+          <div class="li"><div class="ld ld-b"></div>Both</div>
+          <div class="li"><div class="ld" style="background:rgba(245,184,64,.5);"></div>Iter</div>
+        </div>
+        <button class="cbtn" onclick="navigator.clipboard.writeText(document.getElementById('ra${idx}').innerText)">Copy</button>
+        <button class="cbtn" onclick="enableInlineEdit(${idx})" title="직접 편집">✎ 수정</button>
+        <button class="dlbtn" onclick="dlRes(${idx})">↓ 파일</button>
+        <button class="dlbtn" onclick="dlAllRes()" title="완료된 파일 전체 다운로드">↓ 전체</button>
+      </div>
+    </div>
+    <div id="resCodeArea${idx}" class="result-area" style="flex:1;min-height:60px;">${rendered}</div>
+    ${hasChanges ? `
+    <div class="split-handle-h" id="resExplHandle${idx}" onmousedown="startVSplit(event,'resExplHandle${idx}','resExplPanel${idx}','up')"></div>
+    <div id="resExplPanel${idx}" class="expl" style="max-height:180px;flex-shrink:0;">
+      <h4>변경 요약 (${f.changes.length}건)</h4>${chHtml}
+    </div>` : ''}`;
+
+  // result-area를 ra{idx}로도 참조 가능하게 alias
+  const codeEl = wrap.querySelector(`#resCodeArea${idx}`);
+  if (codeEl) codeEl.id = `ra${idx}`;
+}
+function dlRes(idx){
+  const f=rtlFiles[idx];
+  if(!f?.result) return;
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([f.result],{type:'text/plain'}));
+  a.download='modified_'+f.name; a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function dlAllRes(){
+  const done = rtlFiles.filter(f => f.status === 'ok' && f.result);
+  if (!done.length) { alert('완료된 파일이 없습니다.'); return; }
+  // 순차 다운로드 (브라우저 다중 다운로드 허용)
+  done.forEach((f, i) => {
+    setTimeout(() => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([f.result], {type:'text/plain'}));
+      a.download = 'modified_' + f.name;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }, i * 200);
+  });
+  dbgLog('INF', `[일괄 다운로드] ${done.length}개 파일`, 'inf');
+}
+
+function renderVersionTabs(f, idx) {
+  if (!f.history || !f.history.length) return '';
+
+  const tabs = f.history.map((h, vi) => {
+    const promptShort = h.prompt
+      ? esc(h.prompt.slice(0, 30)) + (h.prompt.length > 30 ? '…' : '')
+      : '(직접 수정)';
+    return `<button class="vtab" onclick="showVersion(${idx},${vi})"
+      title="${esc(h.prompt || '직접 수정')}">v${h.version}</button>`;
+  }).join('');
+
+  return `<div style="display:flex;align-items:center;gap:4px;padding:5px 14px;border-bottom:1px solid var(--border);background:var(--s2);flex-shrink:0;overflow-x:auto;flex-wrap:nowrap;">
+    <span style="font-family:var(--mono);font-size:11px;color:var(--text3);margin-right:4px;flex-shrink:0;">버전</span>
+    ${tabs}
+    <button class="vtab active latest">현재</button>
+  </div>`;
+}
+
+// ── Ollama ────────────────────────────────────────────────
+// 현재 선택된 모델명 — 드롭다운이 활성화된 경우 드롭다운 우선
+function getSelectedModel() {
+  const sel = document.getElementById('oModelSelect');
+  if (sel && sel.style.display !== 'none' && sel.value) return sel.value;
+  return document.getElementById('oModel')?.value.trim()
+    || window._envDefaultModel
+    || '';
+}
+
+function syncModelSelect(val) {
+  const sel = document.getElementById('oModelSelect');
+  if (!sel) return;
+  for (const opt of sel.options) {
+    if (opt.value === val) { sel.value = val; return; }
+  }
+}
+
+async function testConnection(){
+  const host   = (document.getElementById('oHost').value).replace(/\/+$/,'');
+  const apiKey = document.getElementById('oApiKey')?.value.trim()||'';
+  const st     = document.getElementById('ps');
+  const btn    = document.getElementById('pingBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '테스트 중…'; }
+  st.style.color='var(--amber)'; st.textContent='연결 중…';
+
+  const targetEndpoint = `${host}/models`;
+  dbgLog('REQ', `GET ${targetEndpoint}`, 'req');
+
+  const useProxy = window._devServerAvailable;
+  const fetchUrl = useProxy ? 'http://localhost:3000/get-proxy' : targetEndpoint;
+  const headers  = {};
+  if (apiKey)   headers['Authorization'] = `Bearer ${apiKey}`;
+  if (useProxy) headers['X-Target-URL']  = targetEndpoint;
+
+  try {
+    const res  = await fetch(fetchUrl, { headers });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const names = (data.data||[]).map(m => m.id||m.name).filter(Boolean).sort();
+
+    dbgLog('RES', `모델 목록 (${names.length}개): ${names.join(', ')||'(없음)'}`, 'res');
+
+    const currentModel = document.getElementById('oModel').value.trim();
+    const defaultModel = window._envDefaultModel || currentModel ;
+
+    if (names.length > 0) {
+      // 드롭다운 채우기
+      const sel = document.getElementById('oModelSelect');
+      sel.innerHTML = names.map(n =>
+        `<option value="${n}" ${n === defaultModel || n === currentModel ? 'selected' : ''}>${n}</option>`
+      ).join('');
+
+      // 선택된 모델을 텍스트 입력란에 반영
+      const selectedModel = names.includes(defaultModel) ? defaultModel
+        : names.includes(currentModel) ? currentModel
+        : names[0];
+      sel.value = selectedModel;
+      document.getElementById('oModel').value = selectedModel;
+
+      // 드롭다운 표시, 텍스트 입력란 숨기기
+      document.getElementById('oModel').style.display = 'none';
+      sel.style.display = '';
+
+      st.style.color   = 'var(--green)';
+      st.textContent   = `✓ ${names.length}개 모델`;
+    } else {
+      // 모델 목록 미지원 서버
+      st.style.color = 'var(--green)';
+      st.textContent = '✓ 연결 OK (목록 미지원)';
+    }
+
+  } catch(e) {
+    dbgLog('ERR', `연결 실패: ${e.message}`, 'err');
+    st.style.color = 'var(--red)';
+    st.textContent = `✗ ${e.message}`;
+    // 실패 시 텍스트 입력란 복원
+    document.getElementById('oModel').style.display = '';
+    document.getElementById('oModelSelect').style.display = 'none';
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '연결 테스트'; }
+  }
+}
+
+// ── Console ───────────────────────────────────────────────
+function toggleCon(){
+  dbgOpen=!dbgOpen;
+  document.getElementById('dbgC').classList.toggle('open',dbgOpen);
+  document.getElementById('dbgT').textContent=dbgOpen?'▲ 닫기':'▼ 열기';
+}
+function dbgLog(tag,msg,cls){
+  dbgCnt++;
+  const c=document.getElementById('dbgC');
+  const line=document.createElement('div');line.className='dbl';
+  line.innerHTML=`<span class="ts">${now()}</span><span class="tag ${cls}">${tag}</span><span class="msg">${esc(String(msg))}</span>`;
+  c.appendChild(line);c.scrollTop=c.scrollHeight;
+  document.getElementById('dbgN').textContent=`(${dbgCnt})`;
+  document.getElementById('dbgI').className='dbg-ind '+(cls==='err'?'er':cls==='res'?'ok':'lo');
+  if(!dbgOpen)toggleCon();
+}
+function setStatus(cls,msg){const el=document.getElementById('statusMsg');el.className='status '+cls;el.textContent=msg;}
+
+// ── Drop zone setup ───────────────────────────────────────
+function setupDrop(dzId,inputId,onFiles){
+  const dz=document.getElementById(dzId);
+  dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('over');});
+  dz.addEventListener('dragleave',()=>dz.classList.remove('over'));
+  dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('over');onFiles(Array.from(e.dataTransfer.files));});
+  document.getElementById(inputId).addEventListener('change',e=>{onFiles(Array.from(e.target.files));e.target.value='';});
+}
+
+// ── Init ──────────────────────────────────────────────────
+setupDrop('dzAI','aiIn',files=>addFiles('ai',files));
+setupDrop('dzAT','atIn',files=>addFiles('at',files));
+setupDrop('dzUA','uaIn',files=>addFiles('ua',files));
+setupDrop('dzUT','utIn',files=>addFiles('ut',files));
+setupDrop('dzRTL','rtlIn',addRtlFiles);
+
+document.getElementById('dzAI').onclick=()=>triggerFile('aiIn');
+document.getElementById('dzAT').onclick=()=>triggerFile('atIn');
+document.getElementById('dzUA').onclick=()=>triggerFile('uaIn');
+document.getElementById('dzUT').onclick=()=>triggerFile('utIn');
+document.getElementById('dzRTL').onclick=()=>triggerFile('rtlIn');
+
+['ai','at','ua','ut'].forEach(k=>renderBank(k));
+renderCards('algo');
+renderCards('uarch');
+renderRtl();
+updateBadge();
+// 파라미터 자동 설정 초기화
+syncParamUI();
+applyAutoParams();
+// num_ctx 행: dev 서버 + OLLAMA_MODE=true 아니면 기본 숨김
+const _numCtxRow = document.getElementById('prow-num_ctx');
+if (_numCtxRow) _numCtxRow.style.display = 'none';
+_pset.num_ctx.use = false;
+
+// ── 창 크기 변경 시 화살표 자동 재그리기 ────────────────
+['algoMapArea', 'uarchMapArea'].forEach(id => {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const mk = id.startsWith('algo') ? 'algo' : 'uarch';
+  new ResizeObserver(() => {
+    if (mappings[mk]?.length) requestAnimationFrame(() => drawArrows(mk));
+  }).observe(el);
+});
+window.addEventListener('resize', () => {
+  ['algo','uarch'].forEach(mk => {
+    if (mappings[mk]?.length) requestAnimationFrame(() => drawArrows(mk));
+  });
+});
+window._devServerAvailable = false;
+fetch('http://localhost:3000/ping')
+  .then(r => r.json())
+  .then(d => {
+    if (!d.ok) return;
+    window._devServerAvailable = true;
+    dbgLog('INF', 'Dev 서버 감지됨 (localhost:3000) — CORS 프록시 + 파일 로그 활성화', 'res');
+    document.getElementById('ps').textContent = '⚡ dev server';
+    document.getElementById('ps').style.color = 'var(--green)';
+
+    // .env 값 로드
+    return fetch('http://localhost:3000/env').then(r => r.json()).then(env => {
+      if (!env.loaded) {
+        dbgLog('INF', '.env 파일 없음 — 기본값 사용 (서버 디렉터리에 .env 생성 권장)', 'inf');
+        return;
+      }
+      // BaseURL 주입
+      if (env.BASE_URL) {
+        const hostEl = document.getElementById('oHost');
+        if (hostEl) {
+          hostEl.value = env.BASE_URL;
+          hostEl.style.borderColor = 'var(--green)';
+          hostEl.title = `.env 에서 로드됨: ${env.BASE_URL}`;
+        }
+      }
+      // API Key 주입
+      if (env.API_KEY) {
+        const keyEl = document.getElementById('oApiKey');
+        if (keyEl) {
+          keyEl.value = env.API_KEY;
+          keyEl.style.borderColor = 'var(--green)';
+          keyEl.placeholder = '✓ .env에서 로드됨';
+        }
+      }
+      // 기본 모델 주입
+      if (env.DEFAULT_MODEL) {
+        window._envDefaultModel = env.DEFAULT_MODEL;
+        const modelEl = document.getElementById('oModel');
+        if (modelEl) modelEl.value = env.DEFAULT_MODEL;
+      }
+
+      // OLLAMA_MODE 처리
+      window._ollamaMode = env.OLLAMA_MODE === true;
+      const numCtxRow = document.getElementById('prow-num_ctx');
+      if (numCtxRow) {
+        if (window._ollamaMode) {
+          // Ollama 모드: num_ctx 활성화, 기본 체크
+          numCtxRow.style.opacity = '1';
+          const chk = document.getElementById('puse-num_ctx');
+          if (chk) { chk.checked = true; _pset.num_ctx.use = true; }
+          const modeEl = document.getElementById('pmode-num_ctx');
+          if (modeEl) modeEl.disabled = false;
+          dbgLog('INF', 'OLLAMA_MODE=true — num_ctx 파라미터 활성화', 'inf');
+        } else {
+          // 일반 모드: num_ctx 완전 비표시
+          numCtxRow.style.display = 'none';
+          _pset.num_ctx.use = false;
+        }
+      }
+      dbgLog('INF',
+        `.env 로드 완료: BASE_URL=${env.BASE_URL || '(없음)'}` +
+        ` MODEL=${env.DEFAULT_MODEL || '(없음)'}` +
+        (env.API_KEY ? ' API_KEY=****' : ''),
+        'res');
+      document.getElementById('ps').textContent = '⚡ dev server + .env';
+    });
+  })
+  .catch(() => {
+    dbgLog('INF', 'Dev 서버 없음 — 직접 연결 모드 (로그는 "로그 저장" 버튼 사용)', 'inf');
+  });
+</script>
+</body>
+</html>
