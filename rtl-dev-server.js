@@ -141,6 +141,20 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // config 파일 반환
+  if (pathname === '/config') {
+    const configPath = path.join(__dirname, 'rtl-converter-config.js');
+    if (!fs.existsSync(configPath)) {
+      res.writeHead(404, {'Content-Type': 'application/json'});
+      res.end(JSON.stringify({ok: false, error: 'rtl-converter-config.js 없음'}));
+      return;
+    }
+    // JS 파일을 텍스트로 그대로 반환 (브라우저에서 eval)
+    res.writeHead(200, {'Content-Type': 'application/javascript'});
+    fs.createReadStream(configPath).pipe(res);
+    return;
+  }
+
   // 로그 저장
   if (req.method === 'POST' && pathname === '/save-log') {
     try {
