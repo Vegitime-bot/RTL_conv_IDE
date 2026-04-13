@@ -296,7 +296,7 @@ textarea::placeholder{color:var(--text3);}
 
 <header>
   <div class="logo">RTL<span>·</span>Converter</div>
-  <div class="badge">Verilog / SystemVerilog</div>
+  <div class="badge" id="langBadge">Verilog / SystemVerilog</div>
   <div class="badge hi" style="margin-left:auto;" id="hBadge">—</div>
 </header>
 
@@ -367,7 +367,7 @@ textarea::placeholder{color:var(--text3);}
       <!-- 우: RTL 관련 변경점 요약 -->
       <div style="display:flex;flex-direction:column;overflow:hidden;background:var(--surface);">
         <div style="padding:7px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-shrink:0;">
-          <div class="pt"><div class="dot b"></div>RTL 관련 변경점</div>
+          <div class="pt"><div class="dot b"></div><span id="algoPanelHdr">RTL 관련 변경점</span></div>
           <span id="adImpactCnt" style="font-family:var(--mono);font-size:11px;color:var(--text3);"></span>
           <div style="margin-left:auto;display:flex;gap:4px;">
             <button id="adUndoBtn" class="btn-g btn" style="font-size:11px;padding:4px 11px;" onclick="impactUndo('algo')" disabled title="실행 취소">↩</button>
@@ -378,7 +378,7 @@ textarea::placeholder{color:var(--text3);}
         </div>
         <div id="adImpact" style="flex:1;overflow-y:auto;padding:10px 12px;">
           <div style="font-family:var(--mono);font-size:12px;color:var(--text3);line-height:1.7;">
-            AI 분석 버튼을 눌러 RTL 영향 변경점을 추출하세요<br>
+            AI 분석 버튼을 눌러 <span class="langFileDesc">RTL</span> 영향 변경점을 추출하세요<br>
             <span style="color:var(--text3);font-size:11px;">하단 입력창에 추가 지시사항을 먼저 작성할 수 있습니다</span>
           </div>
         </div>
@@ -452,7 +452,7 @@ textarea::placeholder{color:var(--text3);}
       <!-- 우: RTL 관련 변경점 요약 -->
       <div style="display:flex;flex-direction:column;overflow:hidden;background:var(--surface);">
         <div style="padding:7px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-shrink:0;">
-          <div class="pt"><div class="dot p"></div>RTL 관련 변경점</div>
+          <div class="pt"><div class="dot p"></div><span id="uarchPanelHdr">RTL 관련 변경점</span></div>
           <span id="udImpactCnt" style="font-family:var(--mono);font-size:11px;color:var(--text3);"></span>
           <div style="margin-left:auto;display:flex;gap:4px;">
             <button id="udUndoBtn" class="btn-g btn" style="font-size:11px;padding:4px 11px;" onclick="impactUndo('uarch')" disabled title="실행 취소">↩</button>
@@ -463,7 +463,7 @@ textarea::placeholder{color:var(--text3);}
         </div>
         <div id="udImpact" style="flex:1;overflow-y:auto;padding:10px 12px;">
           <div style="font-family:var(--mono);font-size:12px;color:var(--text3);line-height:1.7;">
-            AI 분석 버튼을 눌러 RTL 영향 변경점을 추출하세요<br>
+            AI 분석 버튼을 눌러 <span class="langFileDesc">RTL</span> 영향 변경점을 추출하세요<br>
             <span style="color:var(--text3);font-size:11px;">하단 입력창에 추가 지시사항을 먼저 작성할 수 있습니다</span>
           </div>
         </div>
@@ -547,13 +547,34 @@ textarea::placeholder{color:var(--text3);}
   <!-- Step 5: RTL Files -->
   <div class="view active" id="view5">
     <div class="dz" id="dzRTL" style="margin:8px;">
-      <p>📂 <span class="hi">클릭</span>하거나 .v / .sv 파일 드래그</p>
+      <p>📂 <span class="hi">클릭</span>하거나 <span id="dzFileHint">.v / .sv</span> 파일 드래그</p>
       <p class="sub">여러 파일 동시 선택 가능</p>
     </div>
     <input type="file" id="rtlIn" class="file-input" accept=".v,.sv,.verilog" multiple>
+
+    <!-- 출력 언어 선택 -->
+    <div style="padding:8px 14px;display:flex;align-items:center;gap:10px;flex-shrink:0;border-bottom:1px solid var(--border);background:var(--surface);">
+      <span style="font-family:var(--mono);font-size:11px;color:var(--text2);font-weight:500;">출력 언어</span>
+      <label style="display:flex;align-items:center;gap:5px;cursor:pointer;">
+        <input type="radio" name="outputLang" value="rtl" checked
+          style="accent-color:var(--accent);" onchange="setOutputLang('rtl')">
+        <span style="font-family:var(--mono);font-size:12px;color:var(--text);">Verilog / SystemVerilog</span>
+      </label>
+      <label style="display:flex;align-items:center;gap:5px;cursor:pointer;">
+        <input type="radio" name="outputLang" value="systemc"
+          style="accent-color:var(--purple);" onchange="setOutputLang('systemc')">
+        <span style="font-family:var(--mono);font-size:12px;color:var(--text);">SystemC (HLS)</span>
+      </label>
+      <span id="langModeHint" style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-left:4px;">
+        — .v / .sv 파일 · RTL 레벨 변환
+      </span>
+    </div>
     <div style="padding:4px 13px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
-      <span style="font-family:var(--mono);font-size:12px;color:var(--text3);" id="rtlCnt">파일 없음</span>
-      <button class="btn-g btn" style="font-size:12px;padding:4px 11px;" onclick="rtlFiles=[];renderRtl()">전체 삭제</button>
+      <div style="display:flex;flex-direction:column;gap:2px;">
+        <span style="font-family:var(--mono);font-size:12px;color:var(--text3);" id="rtlCnt">파일 없음</span>
+        <span style="font-family:var(--mono);font-size:10px;" id="depGraphBadge"></span>
+      </div>
+      <button class="btn-g btn" style="font-size:12px;padding:4px 11px;" onclick="rtlFiles=[];_depGraph=null;renderRtl();renderDepGraphBadge()">전체 삭제</button>
     </div>
     <div class="file-list" id="rtlList"></div>
 
@@ -615,7 +636,7 @@ textarea::placeholder{color:var(--text3);}
       <div id="iterBody" style="padding:10px 14px;display:flex;flex-direction:column;gap:8px;overflow-y:auto;max-height:300px;">
 
         <!-- 지시 입력 -->
-        <textarea id="iterPrompt" placeholder="예) alu.v의 multiply 결과 폭을 64비트로 수정해줘&#10;예) datapath.v에서 zero_flag 연결이 누락된 것 같아 확인해줘"
+        <textarea id="iterPrompt" placeholder="예) alu.v의 multiply 결과 폭을 64비트로 수정해줘&#10;예) datapath.v에서 zero_flag 연결이 누락된 것 같아 확인해줘&#10;(SystemC) 예) alu.cpp의 멀티플라이어 비트폭을 64비트로 확장해줘"
           style="width:100%;height:60px;font-family:var(--mono);font-size:12px;background:var(--bg);color:var(--text);border:1px solid var(--b2);border-radius:5px;padding:7px 10px;resize:none;outline:none;line-height:1.6;"></textarea>
 
         <!-- LLM 분석 결과 + 파일 선택 -->
@@ -778,15 +799,17 @@ textarea::placeholder{color:var(--text3);}
 
 
   <div style="width:1px;height:20px;background:var(--border);margin:0 6px;flex-shrink:0;"></div>
-  <label style="display:flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap;color:var(--green);font-family:var(--mono);font-size:12px;">
-    <input type="checkbox" id="autoParamChk" checked
-      style="accent-color:var(--green);width:14px;height:14px;"
-      onchange="onAutoParamChange()">
-    파라미터 자동
-  </label>
-  <span id="paramSummary" style="font-family:var(--mono);font-size:11px;color:var(--text3);white-space:nowrap;"></span>
+  <label style="font-family:var(--mono);font-size:11px;color:var(--text2);white-space:nowrap;">변환 강도</label>
+  <div style="display:flex;align-items:center;gap:6px;">
+    <span style="font-family:var(--mono);font-size:10px;color:var(--text3);">정확</span>
+    <input type="range" id="convStrength" min="1" max="3" step="1" value="1"
+      style="width:72px;accent-color:var(--accent);cursor:pointer;"
+      oninput="onConvStrengthChange(this.value)" title="1=정확(기본) · 2=재시도 · 3=탐색">
+    <span style="font-family:var(--mono);font-size:10px;color:var(--text3);">탐색</span>
+    <span id="convStrengthLabel" style="font-family:var(--mono);font-size:11px;color:var(--accent);min-width:52px;">① 정확</span>
+  </div>
   <button class="pbtn" onclick="openParamPopup()"
-    style="font-size:11px;padding:3px 10px;color:var(--text2);border:1px solid var(--b2);">⚙ 파라미터</button>
+    style="font-size:11px;padding:3px 10px;color:var(--text2);border:1px solid var(--b2);">⚙ 고급</button>
   <div style="width:1px;height:20px;background:var(--border);margin:0 6px;flex-shrink:0;"></div>
   <span id="ctxEstimate" style="font-family:var(--mono);font-size:11px;"></span>
 </div>
@@ -800,79 +823,14 @@ textarea::placeholder{color:var(--text3);}
       <button onclick="closeParamPopup()" style="background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer;line-height:1;">✕</button>
     </div>
 
-    <!-- 호환성 안내 -->
-    <div style="padding:8px 16px;background:rgba(255,195,64,.07);border-bottom:1px solid var(--border);font-family:var(--mono);font-size:11px;color:var(--amber);line-height:1.6;">
-      ⚠ OpenAI Compatible 서버 기준 — 미체크 항목은 body에서 제외 (서버 기본값 사용)
-    </div>
-
-    <!-- 컬럼 헤더 -->
-    <div style="padding:6px 16px;background:var(--bg);border-bottom:1px solid var(--border);display:grid;grid-template-columns:1fr 80px 120px 90px;gap:6px;font-family:var(--mono);font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;">
-      <span>파라미터</span>
-      <span style="text-align:center;">사용</span>
-      <span style="text-align:center;">값 모드</span>
-      <span style="text-align:right;">값</span>
+    <!-- 안내 -->
+    <div style="padding:8px 16px;background:rgba(106,184,255,.07);border-bottom:1px solid var(--border);font-family:var(--mono);font-size:11px;color:var(--text2);line-height:1.6;">
+      temperature · seed · top_p는 하단 <b>변환 강도</b> 슬라이더로 자동 설정됩니다.<br>
+      아래는 추론 모델 관련 고급 옵션입니다.
     </div>
 
     <!-- 파라미터 폼 -->
     <div style="padding:8px 16px;display:flex;flex-direction:column;gap:2px;max-height:360px;overflow-y:auto;" id="paramForm">
-
-      <!-- temperature -->
-      <div class="pp-row" id="prow-temperature">
-        <div class="pp-info">
-          <span class="pp-name">temperature</span>
-          <span class="pp-desc">출력 다양성 (0=결정론적, RTL 권장)</span>
-        </div>
-        <label class="pp-use"><input type="checkbox" id="puse-temperature" checked onchange="onPParamUseChange('temperature')"></label>
-        <div class="pp-mode">
-          <select id="pmode-temperature" class="pp-sel" onchange="onPParamModeChange('temperature')">
-            <option value="auto">자동</option>
-            <option value="manual">수동</option>
-          </select>
-        </div>
-        <div class="pp-val">
-          <span id="pauto-temperature" class="pp-autoval">0</span>
-          <input id="pman-temperature" type="number" min="0" max="2" step="0.05" value="0" class="param-input" style="display:none;width:70px;" oninput="syncTempRange()">
-          <input id="prange-temperature" type="range" min="0" max="2" step="0.05" value="0" style="display:none;width:60px;accent-color:var(--accent);" oninput="document.getElementById('pman-temperature').value=parseFloat(this.value).toFixed(2)">
-        </div>
-      </div>
-
-      <!-- seed -->
-      <div class="pp-row" id="prow-seed">
-        <div class="pp-info">
-          <span class="pp-name">seed</span>
-          <span class="pp-desc">재현성 (-1=랜덤, 42=고정)</span>
-        </div>
-        <label class="pp-use"><input type="checkbox" id="puse-seed" checked onchange="onPParamUseChange('seed')"></label>
-        <div class="pp-mode">
-          <select id="pmode-seed" class="pp-sel" onchange="onPParamModeChange('seed')">
-            <option value="auto">자동</option>
-            <option value="manual">수동</option>
-          </select>
-        </div>
-        <div class="pp-val">
-          <span id="pauto-seed" class="pp-autoval">42</span>
-          <input id="pman-seed" type="number" min="-1" max="99999" step="1" value="42" class="param-input" style="display:none;width:80px;">
-        </div>
-      </div>
-
-      <!-- top_p -->
-      <div class="pp-row" id="prow-top_p">
-        <div class="pp-info">
-          <span class="pp-name">top_p</span>
-          <span class="pp-desc">nucleus sampling (RTL=0.1, 분석=0.3)</span>
-        </div>
-        <label class="pp-use"><input type="checkbox" id="puse-top_p" checked onchange="onPParamUseChange('top_p')"></label>
-        <div class="pp-mode">
-          <select id="pmode-top_p" class="pp-sel" onchange="onPParamModeChange('top_p')">
-            <option value="auto">자동</option>
-            <option value="manual">수동</option>
-          </select>
-        </div>
-        <div class="pp-val">
-          <span id="pauto-top_p" class="pp-autoval">mode별</span>
-          <input id="pman-top_p" type="number" min="0" max="1" step="0.05" value="0.1" class="param-input" style="display:none;width:70px;">
-        </div>
-      </div>
 
       <!-- Thinking buf (계산용, 전송 안 함) -->
       <div class="pp-row" id="prow-thinking">
@@ -1463,10 +1421,6 @@ async function loadConfig() {
   return _cfg;
 }
 
-function getCfg(path) {
-  if (!_cfg) return undefined;
-  return path.split('.').reduce((o, k) => o?.[k], _cfg);
-}
 
 // ════════════════════════════════════════════════════════
 // μArch 청크 분할
@@ -1598,7 +1552,7 @@ async function runSummaryAnalysis() {
   const host  = (document.getElementById('oHost').value||'').replace(/\/+$/, '');
   const model = getSelectedModel();
   if (!host || !model) { alert('Base URL과 Model을 먼저 설정하세요.'); return; }
-  if (!rtlFiles.length) { alert('RTL 파일을 먼저 추가하세요 (Step 1).'); return; }
+  if (!rtlFiles.length) { alert(`${getLang().fileDesc} 파일을 먼저 추가하세요 (Step 1).`); return; }
 
   await loadConfig();
 
@@ -1643,32 +1597,39 @@ async function runSummaryPhase1(host, model) {
   // RTL 파일 시그니처 준비
   const sigs = rtlFiles.map(f => extractSignature(f.content, f.name)).join('\n\n');
 
+  // 의존성 그래프 힌트 (있는 경우)
+  if (!_depGraph) buildDepGraph();
+  const allFileNames = rtlFiles.map(f => f.name);
+  const { upstream: p1Up, downstream: p1Down } = getAffectedFiles(allFileNames, 1);
+  const depHint = _depGraph ? buildDepGraphHint(allFileNames) : '';
+
   // impact 항목 요약
   const algoImpact  = buildImpactText('algo');
   const uarchImpact = buildImpactText('uarch');
-  const impactSec   = [
-    algoImpact.trim()  ? `=== Algorithm RTL Changes ===\n${algoImpact}`  : '',
-    uarchImpact.trim() ? `=== μArch RTL Changes ===\n${uarchImpact}`     : '',
+  const _p1Lang = getLang();
+  const impactSec = [
+    algoImpact.trim()  ? `=== Algorithm ${_p1Lang.fileDesc} Changes ===\n${algoImpact}` : '',
+    uarchImpact.trim() ? `=== μArch ${_p1Lang.fileDesc} Changes ===\n${uarchImpact}`    : '',
   ].filter(Boolean).join('\n\n') || '(변경점 분석 없음)';
 
-  const prompt = `You are an expert RTL engineer.
+  const prompt = `${_p1Lang.impactExpert}
 
-Given the following RTL change points and RTL file signatures, determine:
-1. Which RTL files MUST be modified (target)
+Given the following ${_p1Lang.fileDesc} change points and ${_p1Lang.fileDesc} file signatures, determine:
+1. Which ${_p1Lang.fileDesc} files MUST be modified (target)
 2. Which files are indirectly affected via port/interface changes (ref)
 3. Which files are completely unrelated (exclude)
 For each target/ref file, list the specific port names and signal names that will be affected.
 
 ${impactSec}
 
-=== Available RTL Files (signatures) ===
+${depHint ? depHint + '\n\n' : ''}=== Available ${_p1Lang.fileDesc} Files (signatures) ===
 ${sigs}
 
 Respond in JSON only (no markdown):
 {
   "files": [
     {
-      "name": "filename.v",
+      "name": "${_p1Lang.sampleFile}",
       "status": "target|ref|exclude",
       "reason": "brief reason",
       "ports": ["port_name_1", "port_name_2"],
@@ -1687,7 +1648,7 @@ Rules:
 
   let raw = '';
   const t0 = Date.now();
-  await callLLM(host, model, 'You are an RTL engineer. Respond only in valid JSON.', prompt,
+  await callLLM(host, model, `${getLang().impactExpert} Respond only in valid JSON.`, prompt,
     partial => { raw = partial; }, 'json', _llmAborts['sum-analyze']?.controller.signal);
 
   const m = raw.match(/\{[\s\S]*\}/);
@@ -1731,12 +1692,13 @@ async function runSummaryPhase2(host, model, utText) {
     `[${c.idx}] ${c.title} (~${c.tokens} tok)`
   ).join('\n');
 
-  const prompt = `You are an expert RTL/micro-architecture engineer.
+  const lang2 = getLang();
+  const prompt = `${lang2.impactExpert}
 
-Given the following RTL files that need modification and their affected ports/signals,
+Given the following ${lang2.fileDesc} files that need modification and their affected ports/signals,
 identify which sections of the TO-BE μArch document are most relevant.
 
-=== RTL Files to Modify ===
+=== ${lang2.fileDesc} Files to Modify ===
 ${queryParts || '(없음)'}
 
 === TO-BE μArch Document Sections (index list) ===
@@ -1762,7 +1724,7 @@ Rules:
 
   let raw = '';
   const t0 = Date.now();
-  await callLLM(host, model, 'You are an RTL engineer. Respond only in valid JSON.', prompt,
+  await callLLM(host, model, `${getLang().impactExpert} Respond only in valid JSON.`, prompt,
     partial => { raw = partial; }, 'json', _llmAborts['sum-analyze']?.controller.signal);
 
   const m = raw.match(/\{[\s\S]*\}/);
@@ -1916,7 +1878,7 @@ function buildSummary(){
         const priCls  = item.priority === 'high' ? 'rem' : item.priority === 'med' ? 'mod' : 'add';
         const catLbl  = (item.category || 'logic').toUpperCase();
         const userBadge = item._userAdded ? `<span class="pill ua">USER</span>` : '';
-        const idBadge = item.id ? renderIdBadges([item.id]) : '';
+        const idBadge = item.id ? renderIdBadges([item.id], true) : '';
         return `<div class="si">
           ${idBadge}<span class="pill ${priCls}">${catLbl}</span>${userBadge}
           <div><p>${esc(item.change)}</p>
@@ -1931,10 +1893,10 @@ function buildSummary(){
   };
 
   const algoHeader = _impactData.algo?.items?.length
-    ? `Algorithm RTL 영향 (${_impactData.algo.items.length}건 · AI 검토됨) — ${algoFiles}개 파일`
+    ? `Algorithm ${getLang().fileDesc} 영향 (${_impactData.algo.items.length}건 · AI 검토됨) — ${algoFiles}개 파일`
     : `Algorithm 변경 (${ai.length}) — ${algoFiles}개 파일`;
   const uaHeader = _impactData.uarch?.items?.length
-    ? `μArch RTL 영향 (${_impactData.uarch.items.length}건 · AI 검토됨) — ${uaFiles}개 파일`
+    ? `μArch ${getLang().fileDesc} 영향 (${_impactData.uarch.items.length}건 · AI 검토됨) — ${uaFiles}개 파일`
     : `μArch 변경 (${ui.length}) — ${uaFiles}개 파일`;
 
   document.getElementById('sumWrap').innerHTML=`
@@ -1950,21 +1912,21 @@ function buildSummary(){
       <div class="sch" style="color:var(--accent);"><div class="dot b"></div>RTL 변환 대상 (${rtlFiles.length}개)</div>
       <div class="scb">${rtlFiles.length
         ?rtlFiles.map(f=>`<div class="si"><span class="pill mod">RTL</span><p>${esc(f.name)}</p></div>`).join('')
-        :'<div class="no-ch">RTL 파일 없음 — Step 6에서 추가하세요</div>'}</div>
+        :`<div class="no-ch">${getLang().noFileHint}</div>`}</div>
     </div>`;
 }
 
 // ── RTL files ────────────────────────────────────────────
 function addRtlFiles(files){
   files.forEach(f=>{
-    if(!/\.(v|sv|verilog)$/i.test(f.name))return;
+    if(!getLang().fileExts.test(f.name))return;
     if(rtlFiles.find(x=>x.name===f.name))return;
     const r=new FileReader();
-    r.onload=e=>{rtlFiles.push({name:f.name,content:e.target.result,status:'wait',result:'',changes:[]});renderRtl();updateBadge();};
+    r.onload=e=>{rtlFiles.push({name:f.name,content:e.target.result,status:'wait',result:'',changes:[]});renderRtl();updateBadge();buildDepGraph();renderDepGraphBadge();};
     r.readAsText(f);
   });
 }
-function removeRtl(i){rtlFiles.splice(i,1);renderRtl();updateBadge();}
+function removeRtl(i){rtlFiles.splice(i,1);renderRtl();updateBadge();buildDepGraph();renderDepGraphBadge();}
 function renderRtl(){
   document.getElementById('rtlCnt').textContent=`${rtlFiles.length}개 파일`;
   const list=document.getElementById('rtlList');
@@ -1990,6 +1952,91 @@ function updateBadge(){
 
 // ── Conversion mode ───────────────────────────────────────
 const convMode = 'single';  // 기본 단일 컨텍스트
+
+// ── 출력 언어 설정 ────────────────────────────────────────
+let _outputLang = 'rtl';  // 'rtl' | 'systemc'
+
+const LANG_CFG = {
+  rtl: {
+    label:        'Verilog / SystemVerilog',
+    badge:        'Verilog / SystemVerilog',
+    fileAccept:   '.v,.sv,.verilog',
+    fileExts:     /\.(v|sv|verilog)$/i,
+    dzHint:       '.v / .sv',
+    modeHint:     '— .v / .sv 파일 · RTL 레벨 변환',
+    expert:       'You are an expert RTL (Verilog/SystemVerilog) engineer.',
+    iterExpert:   'You are an expert RTL (Verilog/SystemVerilog) engineer.',
+    impactExpert: 'You are an expert RTL (Verilog/SystemVerilog) engineer.',
+    commentStyle: '// ALGO: / // UARCH: / // BOTH:',
+    commentIter:  '// ITER:',
+    fileDesc:     'RTL',
+    sampleFile:   'filename.v',
+    construct:    'signal/port/always block/parameter',
+    noFileHint:   'RTL 파일 없음 — Step 1에서 추가하세요',
+    sigLabel:     '=== Module signature:',
+    extractSig:   'verilog',
+  },
+  systemc: {
+    label:        'SystemC (HLS)',
+    badge:        'SystemC / HLS',
+    fileAccept:   '.cpp,.h,.hpp,.cc',
+    fileExts:     /\.(cpp|h|hpp|cc)$/i,
+    dzHint:       '.cpp / .h / .hpp',
+    modeHint:     '— .cpp / .h / .hpp 파일 · HLS/SystemC 레벨 변환',
+    expert:       'You are an expert SystemC/HLS (High-Level Synthesis) engineer.',
+    iterExpert:   'You are an expert SystemC/HLS engineer.',
+    impactExpert: 'You are an expert SystemC/HLS engineer familiar with Verilog RTL concepts.',
+    commentStyle: '// ALGO: / // UARCH: / // BOTH:',
+    commentIter:  '// ITER:',
+    fileDesc:     'SystemC',
+    sampleFile:   'filename.cpp',
+    construct:    'SC_MODULE/port/signal/process/channel/HLS pragma',
+    noFileHint:   'SystemC 파일 없음 — Step 1에서 추가하세요',
+    sigLabel:     '=== SC_MODULE signature:',
+    extractSig:   'systemc',
+  },
+};
+
+function getLang() { return LANG_CFG[_outputLang] || LANG_CFG.rtl; }
+
+function setOutputLang(lang) {
+  _outputLang = lang;
+  const cfg = getLang();
+
+  // 헤더 badge
+  const badge = document.getElementById('langBadge');
+  if (badge) badge.textContent = cfg.badge;
+
+  // 파일 업로드 input accept
+  const rtlIn = document.getElementById('rtlIn');
+  if (rtlIn) rtlIn.accept = cfg.fileAccept;
+
+  // DZ 힌트
+  const dzHint = document.getElementById('dzFileHint');
+  if (dzHint) dzHint.textContent = cfg.dzHint;
+
+  // 모드 힌트
+  const modeHint = document.getElementById('langModeHint');
+  if (modeHint) modeHint.textContent = cfg.modeHint;
+
+  // 파일 확장자 필터 업데이트 → 기존 파일 목록 클리어 안 함 (언어 전환 시 파일 유지)
+  // Diff 패널 헤더 동적 갱신
+  ['algoPanelHdr','uarchPanelHdr'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = `${cfg.fileDesc} 관련 변경점`;
+  });
+  document.querySelectorAll('.langFileDesc').forEach(el => {
+    el.textContent = cfg.fileDesc;
+  });
+
+  // Step 1 stepbar 버튼 텍스트 업데이트
+  const s0 = document.getElementById('s0');
+  if (s0) s0.querySelector('.sn').nextSibling ? null : null; // 구조 유지
+
+  renderRtl();
+  updateCtxEstimate();
+  dbgLog('INF', `[lang] 출력 언어 전환: ${cfg.label}`, 'inf');
+}
 let _currentRunMode = 'single';  // 실제 실행 모드 (token 초과 시 'sequential'로 변경)
 
 function autoCalcNumCtx() {
@@ -2039,9 +2086,6 @@ function autoCalcNumCtx() {
   };
 }
 
-function applyAutoNumCtx() {
-  updateCtxEstimate();
-}
 
 function updateCtxEstimate() {
   const el = document.getElementById('ctxEstimate');
@@ -2157,7 +2201,7 @@ function hideResumeBtn() { document.getElementById('resumeBtn').style.display = 
 
 // ── Batch convert (mode dispatcher) ──────────────────────
 async function runBatch() {
-  if (!rtlFiles.length) { setStatus('er','RTL 파일을 추가하세요'); return; }
+  if (!rtlFiles.length) { setStatus('er',`${getLang().fileDesc} 파일을 추가하세요`); return; }
 
   // impact 데이터 없이 변환 시도 시 경고
   const hasAlgoDoc  = getText('ai') || getText('at');
@@ -2171,7 +2215,7 @@ async function runBatch() {
     if (!uarchOk) missing.push('μArch');
     const msg = `<b style="color:var(--text)">${missing.join(', ')} 문서</b>가 입력되어 있지만<br>` +
       `아직 AI 분석이 수행되지 않았습니다.<br><br>` +
-      `AI 분석 없이 변환하면 LLM에 전달할 RTL 변경점이 없어<br>` +
+      `AI 분석 없이 변환하면 LLM에 전달할 ${getLang().fileDesc} 변경점이 없어<br>` +
       `변환 결과가 원본과 동일하거나 불정확할 수 있습니다.<br><br>` +
       `<span style="color:var(--text3);">Algo Diff / μArch Diff 탭 → <b>AI 분석</b> 버튼을 먼저 실행하세요.</span>`;
     document.getElementById('impactWarnMsg').innerHTML = msg;
@@ -2468,8 +2512,8 @@ function calcTotalConvTokens() {
     ctxTok, algoRawTok, rtlTok, outRtlTok, overhead, total,
     breakdown: [
       { label: 'Impact/μArch 컨텍스트', tok: ctxTok },
-      { label: 'Origin RTL 합산',       tok: rtlTok },
-      { label: '예상 출력 RTL (×1.1)',  tok: outRtlTok },
+      { label: `Origin ${getLang().fileDesc} 합산`, tok: rtlTok },
+      { label: `예상 출력 ${getLang().fileDesc} (×1.1)`, tok: outRtlTok },
       { label: '프롬프트 오버헤드',     tok: overhead },
     ]
   };
@@ -2594,7 +2638,7 @@ function parseChangeLine(line) {
 }
 
 // ID 뱃지 HTML 생성
-function renderIdBadges(ids) {
+function renderIdBadges(ids, clickable = false) {
   if (!ids?.length) return '';
   return ids.map(id => {
     const color = id.startsWith('ALGO') ? 'var(--accent)'
@@ -2603,19 +2647,17 @@ function renderIdBadges(ids) {
     const bg    = id.startsWith('ALGO') ? 'rgba(106,184,255,.15)'
                 : id.startsWith('ARCH') ? 'rgba(176,144,232,.15)'
                 : 'var(--border)';
-    return `<span style="font-family:var(--mono);font-size:10px;padding:1px 5px;border-radius:3px;background:${bg};color:${color};margin-right:2px;flex-shrink:0;">${esc(id)}</span>`;
+    const click = clickable
+      ? `onclick="navigateToImpactId('${id}')" title="Diff에서 ${id} 보기" style="cursor:pointer;"`
+      : `style=""`; 
+    return `<span ${click} style="font-family:var(--mono);font-size:10px;padding:1px 5px;border-radius:3px;background:${bg};color:${color};margin-right:2px;flex-shrink:0;${clickable?'cursor:pointer;text-decoration:underline dotted;':''}">${esc(id)}</span>`;
   }).join('');
 }
 
 // ── 컨텍스트 제어 헬퍼 ────────────────────────────────────
 // ── 파라미터 팝업 ─────────────────────────────────────────
 // 숨겨진 실제 값 저장소 (callLLM이 읽는 곳)
-const _params = { oNumCtx: 32768, oThinkingBuf: 0, oTemperature: 0, oSeed: 42 };
 
-function getNumCtx()      { return _params.oNumCtx; }
-function getThinkingBuf() { return _params.oThinkingBuf; }
-function getTemperature() { return _params.oTemperature; }
-function getSeed()        { return _params.oSeed; }
 
 // ── 파라미터 팝업 신규 구조 ──────────────────────────────
 // _pset: 각 파라미터의 설정 상태
@@ -2623,59 +2665,61 @@ function getSeed()        { return _params.oSeed; }
 // mode: 'auto'=자동계산, 'manual'=직접입력
 // val: 수동값
 const _pset = {
-  temperature: { use: true,  mode: 'auto',   val: 0     },
-  seed:        { use: true,  mode: 'auto',   val: 42    },
-  top_p:       { use: true,  mode: 'auto',   val: 0.1   },
-  num_ctx:     { use: false, mode: 'auto',   val: 32768 }, // OLLAMA_MODE 전용 (기본 비활성)
-  thinking:    { use: false, mode: 'manual', val: 0     }, // 계산용
+  num_ctx:  { use: false, mode: 'auto',   val: 32768 }, // OLLAMA_MODE 전용 (기본 비활성)
+  thinking: { use: false, mode: 'manual', val: 0     }, // 계산용
 };
 
-// 자동값 계산 (mode와 inputTok은 callLLM에서 결정)
-function calcAutoVals(mode, inputTok) {
-  const isRtl     = mode === 'rtl';
+// ── 변환 강도 슬라이더 ─────────────────────────────────────
+// 단계별 파라미터 매핑
+const CONV_STRENGTH_PRESETS = {
+  1: { label: '① 정확',  temperature: 0,   seed: 42,          top_p: undefined, desc: '결정론적 — 항상 동일한 결과' },
+  2: { label: '② 재시도', temperature: 0.2, seed: _randSeed(), top_p: 0.85,      desc: '살짝 다른 접근 — 재시도 시 사용' },
+  3: { label: '③ 탐색',  temperature: 0.5, seed: _randSeed(), top_p: 0.95,      desc: '꽤 다른 접근 — 완전히 새로운 방법' },
+};
+let _convStrength = 1;
 
-  return {
-    temperature: 0,
-    seed:        42,
-    top_p:       isRtl ? 0.1 : 0.3,
-  };
+function _randSeed() { return Math.floor(Math.random() * 99999) + 1; }
+
+function onConvStrengthChange(val) {
+  _convStrength = parseInt(val, 10);
+  // seed는 재시도/탐색 시 매번 새로 생성
+  if (_convStrength > 1) {
+    CONV_STRENGTH_PRESETS[2].seed = _randSeed();
+    CONV_STRENGTH_PRESETS[3].seed = _randSeed();
+  }
+  const preset = CONV_STRENGTH_PRESETS[_convStrength];
+  const lbl = document.getElementById('convStrengthLabel');
+  if (lbl) {
+    lbl.textContent = preset.label;
+    lbl.style.color = _convStrength === 1 ? 'var(--accent)'
+                    : _convStrength === 2 ? 'var(--amber)' : 'var(--red)';
+  }
+  dbgLog('INF', `[강도] ${preset.label} — temp:${preset.temperature} seed:${preset.seed} top_p:${preset.top_p??'없음'}`, 'inf');
 }
 
-// 팝업 열기
+function getConvPreset() { return CONV_STRENGTH_PRESETS[_convStrength] || CONV_STRENGTH_PRESETS[1]; }
+
+// 자동값 계산 → 슬라이더 preset 반환
+function calcAutoVals(mode, inputTok) {
+  const p = getConvPreset();
+  return { temperature: p.temperature, seed: p.seed, top_p: p.top_p };
+}
+
+// 팝업 열기 (Thinking buf 전용)
 function openParamPopup() {
-  // 자동값 미리보기 (현재 단계 기준, inputTok=0으로 근사)
-  const autoVals = calcAutoVals('rtl', 500); // 대표 미리보기
-  const pkeys = ['temperature','seed','top_p','thinking'];
+  const pkeys = ['thinking'];
   pkeys.forEach(key => {
     const p = _pset[key];
-    // 사용 체크박스
-    const useEl = document.getElementById(`puse-${key}`);
-    if (useEl) useEl.checked = p.use;
-    // 모드 셀렉트
+    const useEl  = document.getElementById(`puse-${key}`);
     const modeEl = document.getElementById(`pmode-${key}`);
-    if (modeEl) { modeEl.value = p.mode; modeEl.disabled = !p.use; }
-    // 자동값 표시
+    const manEl  = document.getElementById(`pman-${key}`);
     const autoEl = document.getElementById(`pauto-${key}`);
-    if (autoEl) {
-      const av = autoVals[key];
-      autoEl.textContent = av !== undefined ? String(av) : '–';
-      autoEl.style.display = (p.mode === 'auto' && p.use) ? '' : 'none';
-    }
-    // 수동 입력
-    const manEl = document.getElementById(`pman-${key}`);
-    if (manEl) {
-      manEl.value = p.val;
-      manEl.style.display = (p.mode === 'manual' && p.use) ? '' : 'none';
-      manEl.disabled = !p.use;
-    }
-    // range 슬라이더 (temperature)
-    if (key === 'temperature') {
-      const rng = document.getElementById('prange-temperature');
-      if (rng) { rng.value = p.val; rng.style.display = (p.mode === 'manual' && p.use) ? '' : 'none'; rng.disabled = !p.use; }
-    }
-    // 행 전체 dimming
-    const row = document.getElementById(`prow-${key}`);
-    if (row) row.classList.toggle('disabled-row', !p.use);
+    const row    = document.getElementById(`prow-${key}`);
+    if (useEl)  useEl.checked  = p.use;
+    if (modeEl) { modeEl.value = p.mode; modeEl.disabled = !p.use; }
+    if (manEl)  { manEl.value  = p.val;  manEl.style.display = (p.mode==='manual'&&p.use)?'':'none'; manEl.disabled = !p.use; }
+    if (autoEl) autoEl.style.display = (p.mode==='auto'&&p.use) ? '' : 'none';
+    if (row)    row.classList.toggle('disabled-row', !p.use);
   });
   document.getElementById('paramPopup').style.display = 'flex';
 }
@@ -2716,15 +2760,10 @@ function onPParamModeChange(key) {
   }
 }
 
-function syncTempRange() {
-  const v = document.getElementById('pman-temperature')?.value;
-  const r = document.getElementById('prange-temperature');
-  if (r && v) r.value = v;
-}
 
 // 적용 버튼
 function applyParamPopup() {
-  const pkeys = ['temperature','seed','top_p','thinking'];
+  const pkeys = ['thinking'];
   pkeys.forEach(key => {
     _pset[key].use  = document.getElementById(`puse-${key}`)?.checked ?? _pset[key].use;
     _pset[key].mode = document.getElementById(`pmode-${key}`)?.value  ?? _pset[key].mode;
@@ -2748,50 +2787,25 @@ function applyParamPopup() {
 
 // 헬퍼: 특정 파라미터의 실제 값 (auto면 inputTok 기반 계산)
 function getParam(key, mode, inputTok) {
+  // temperature / seed / top_p → 변환 강도 슬라이더 preset에서 읽음
+  if (key === 'temperature' || key === 'seed' || key === 'top_p') {
+    const v = calcAutoVals(mode, inputTok)[key];
+    return v;   // undefined이면 body에서 제외 (top_p=undefined 시 전송 안 함)
+  }
+  // 나머지 (num_ctx, thinking 등) → 기존 _pset 방식
   const p = _pset[key];
   if (!p || !p.use) return undefined;
-  if (p.mode === 'manual') {
-    return p.val;
-  }
-  // auto 모드: inputTok 기반 계산
-  try {
-    const v = calcAutoVals(mode, inputTok)[key];
-    if (v === undefined) {
-      // auto인데 calcAutoVals에 해당 key가 없는 경우 (num_ctx 등)
-      return p.val;
-    }
-    return v;
-  } catch(e) {
-    console.warn(`[getParam] ${key} 자동 계산 실패, val 사용:`, e);
-    return p.val;
-  }
+  if (p.mode === 'manual') return p.val;
+  return p.val;
 }
 
-// cfg 바 요약 업데이트
-function onAutoParamChange() {
-  updateParamSummary();
-  updateCtxEstimate();
-}
+// updateParamSummary: 슬라이더 상태 표시
 
-// cfg 바 자동 체크박스 (이제 역할이 축소됨 — 요약 표시용)
 function updateParamSummary() {
-  const el = document.getElementById('paramSummary');
-  if (!el) return;
-  const active = Object.entries(_pset)
-    .filter(([k, p]) => p.use && k !== 'thinking')
-    .map(([k, p]) => `${k}:${p.mode === 'auto' ? '⚡' : p.val}`)
-    .join(' ');
-  el.innerHTML = `<span style="color:var(--text3);font-size:11px;">${active}</span>`;
+  // 슬라이더 방식으로 전환 — 별도 표시 불필요
 }
 
-// 구 함수 호환성 유지
-function getNumCtx()      { return null; }  // Ollama 미사용 — num_ctx 전송 안 함
 function getThinkingBuf() { return _pset.thinking.use ? (_pset.thinking.val || 0) : 0; }
-function getTemperature() { return _pset.temperature.use ? _pset.temperature.val : undefined; }
-function getSeed()        { return _pset.seed.use ? _pset.seed.val : -999; } // -999 = 제외
-function resetToAutoParams() { openParamPopup(); } // 팝업에서 직접 설정
-function syncPopupForm()  {}
-function onAutoParamChange2() {}
 // 스텝 이동·파일 변경 시 자동값 갱신
 function refreshAutoParams() {
   try {
@@ -2804,26 +2818,11 @@ function refreshAutoParams() {
 // 기존 함수 호환성 유지
 function syncParamUI() { updateParamSummary(); }
 function applyAutoParams() { updateParamSummary(); }
-function enableParamEdit()    { openParamPopup(); }
-function onParamManualEdit()  {}
 
 // 자동값 계산 (현재 스텝 + 처리 모드 기반)
-function calcAutoParams() {
-  const calc     = autoCalcNumCtx();
-  let estCtx;
-  if      (cur === 2 && calc.algoDocTok  > 0) estCtx = calc.recAlgo;
-  else if (cur === 4 && calc.uarchDocTok > 0) estCtx = calc.recUarch;
-  else if (rtlFiles.length)                   estCtx = calc.recSingle;  // 단일 컨텍스트 고정
-  else                                        estCtx = 32768;
-  return { oNumCtx: estCtx, oTemperature: 0, oSeed: 42 };
-}
 
 function isCompressPrompt() {
   // 순차 처리 모드에서만 압축 적용 (단일 컨텍스트는 전체 전달)
-  return _currentRunMode === 'sequential';
-}
-function isSigOnly() {
-  // 순차 처리 시 이전 파일 전체 대신 시그니처만 전달 (컨텍스트 절약)
   return _currentRunMode === 'sequential';
 }
 function isIncludeNewUarch() {
@@ -2833,13 +2832,258 @@ function estimateTokens(text) {
   return Math.round((text || '').length / 3.5);
 }
 
+// ════════════════════════════════════════════════════════
+// 모듈 의존성 그래프 (2-hop 영향 분석)
+// ════════════════════════════════════════════════════════
+let _depGraph = null;  // 파일 업로드/변경 시 갱신
+
+// ── Verilog/SV 인스턴스 파서 ─────────────────────────────
+function parseVerilogInstances(code, fname) {
+  const instances = [];
+  const stripped = code
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/\/\/[^\n]*/g, '');
+
+  const verilogKw = new Set([
+    'module','endmodule','input','output','inout','wire','reg',
+    'logic','always','assign','initial','begin','end','if','else',
+    'for','case','parameter','localparam','generate','endgenerate',
+    'function','task','integer','genvar','posedge','negedge'
+  ]);
+
+  function parseBindings(str) {
+    const out = [];
+    const re = /\.\s*(\w+)\s*\(\s*([^)]*)\s*\)/g;
+    let m;
+    while ((m = re.exec(str)) !== null) {
+      const val = m[2].trim();
+      if (val) out.push({ port: m[1].trim(), signal: val });
+    }
+    return out;
+  }
+
+  // 세미콜론 단위로 분리해서 인스턴스 패턴 탐색
+  const stmts = stripped.split(';');
+  for (const stmt of stmts) {
+    const re = /(?:^|[\s;,(])([A-Za-z_]\w*)\s*(?:#\s*\(([^]*?)\)\s*)?([A-Za-z_]\w*)\s*\(([^]*?)\)\s*$/;
+    const mm = re.exec(stmt.trim());
+    if (!mm) continue;
+    const modName  = mm[1].trim();
+    const paramStr = mm[2] || '';
+    const instName = mm[3].trim();
+    const portStr  = mm[4] || '';
+    if (verilogKw.has(modName) || verilogKw.has(instName)) continue;
+    if (modName === instName) continue;
+    if (/^[A-Z_][A-Z0-9_]*$/.test(modName) && modName.length <= 4) continue;
+    const portBindings  = parseBindings(portStr);
+    if (!portBindings.length) continue;
+    const paramBindings = parseBindings(paramStr);
+    instances.push({ instModule: modName, instName, portBindings, paramBindings });
+  }
+  return instances;
+}
+
+// ── SystemC 인스턴스 파서 ────────────────────────────────
+function parseSystemCInstances(code, fname) {
+  const instances = [];
+  const stripped = code
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/\/\/[^\n]*/g, '');
+
+  const scKw = new Set([
+    'sc_in','sc_out','sc_inout','sc_signal','sc_clock','sc_fifo',
+    'sc_buffer','int','bool','float','double','void','auto','uint',
+    'char','string','SC_CTOR','SC_HAS_PROCESS','sc_module','SC_MODULE',
+    'SC_METHOD','SC_THREAD','unsigned','signed','size_t','uint32_t',
+    'uint64_t','int32_t','int64_t'
+  ]);
+
+  const memberRe = /([A-Za-z_][\w:]*)\s+\*?\s*([A-Za-z_][\w_]*)\s*[;{=(]/gm;
+  let m;
+  while ((m = memberRe.exec(stripped)) !== null) {
+    const typeName = m[1].trim();
+    const instName = m[2].trim();
+    if (scKw.has(typeName) || typeName.startsWith('sc_') || typeName.startsWith('std::')) continue;
+    if (/^[A-Z_][A-Z0-9_]*$/.test(typeName)) continue;
+
+    const escaped = instName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const bindRe  = new RegExp(escaped + '[\\s\\S]{0,40}\\.bind\\s*\\(\\s*([\\w_]+)\\s*\\)', 'g');
+    const portBindings = [];
+    let bp;
+    while ((bp = bindRe.exec(stripped)) !== null)
+      portBindings.push({ port: '?', signal: bp[1].trim() });
+    instances.push({ instModule: typeName, instName, portBindings, paramBindings: [] });
+  }
+  return instances;
+}
+// ── 전체 dep graph 빌드 ─────────────────────────────────
+function buildDepGraph() {
+  if (!rtlFiles.length) { _depGraph = null; return; }
+
+  const isSC = getLang().extractSig === 'systemc';
+  const graph = {};  // fname → { moduleNames, instantiates[], instantiatedBy[], portBindings{} }
+
+  // 1. 모듈명 ↔ 파일명 매핑 먼저 수집
+  const moduleToFile = {};
+  rtlFiles.forEach(f => {
+    graph[f.name] = { moduleNames: [], instantiates: [], instantiatedBy: [], portBindings: {} };
+    if (!isSC) {
+      const mods = [...(f.content.matchAll(/^module\s+([\w]+)/gm))].map(m => m[1]);
+      graph[f.name].moduleNames = mods;
+      mods.forEach(mn => { moduleToFile[mn] = f.name; });
+    } else {
+      const mods = [...(f.content.matchAll(/SC_MODULE\s*\(\s*([\w]+)/gm))].map(m => m[1]);
+      graph[f.name].moduleNames = mods;
+      mods.forEach(mn => { moduleToFile[mn] = f.name; });
+    }
+  });
+
+  // 2. 각 파일의 인스턴스 파싱 → 엣지 생성
+  rtlFiles.forEach(f => {
+    const instances = isSC
+      ? parseSystemCInstances(f.content, f.name)
+      : parseVerilogInstances(f.content, f.name);
+
+    instances.forEach(inst => {
+      const childFile = moduleToFile[inst.instModule];
+      if (!childFile || childFile === f.name) return;  // 같은 파일 내 제외
+
+      if (!graph[f.name].instantiates.includes(childFile))
+        graph[f.name].instantiates.push(childFile);
+      if (!graph[childFile].instantiatedBy.includes(f.name))
+        graph[childFile].instantiatedBy.push(f.name);
+
+      // 포트 바인딩 저장 (parent→child 방향)
+      if (!graph[f.name].portBindings[childFile])
+        graph[f.name].portBindings[childFile] = [];
+      graph[f.name].portBindings[childFile].push(...inst.portBindings);
+    });
+  });
+
+  _depGraph = graph;
+  const edgeCnt = Object.values(graph).reduce((s, n) => s + n.instantiates.length, 0);
+  dbgLog('INF', `[depGraph] ${rtlFiles.length}개 파일, ${edgeCnt}개 의존 관계 빌드됨`, 'inf');
+  return graph;
+}
+
+// ── 2-hop BFS 영향 파일 탐색 ────────────────────────────
+// changedFiles: 직접 수정되는 파일명 배열
+// 반환: { upstream: Set, downstream: Set }  (changedFiles 자신 제외)
+function getAffectedFiles(changedFiles, maxHop = 2) {
+  if (!_depGraph) return { upstream: new Set(), downstream: new Set() };
+
+  const upstream   = new Set();  // changedFiles를 인스턴스화하는 파일들 (상위)
+  const downstream = new Set();  // changedFiles가 인스턴스화하는 파일들 (하위)
+  const changed    = new Set(changedFiles);
+
+  // Downstream BFS (내가 쓰는 것들)
+  let frontier = [...changedFiles];
+  for (let hop = 0; hop < maxHop; hop++) {
+    const next = [];
+    frontier.forEach(f => {
+      (_depGraph[f]?.instantiates || []).forEach(child => {
+        if (!changed.has(child) && !downstream.has(child)) {
+          downstream.add(child); next.push(child);
+        }
+      });
+    });
+    frontier = next;
+    if (!next.length) break;
+  }
+
+  // Upstream BFS (나를 쓰는 것들)
+  frontier = [...changedFiles];
+  for (let hop = 0; hop < maxHop; hop++) {
+    const next = [];
+    frontier.forEach(f => {
+      (_depGraph[f]?.instantiatedBy || []).forEach(parent => {
+        if (!changed.has(parent) && !upstream.has(parent)) {
+          upstream.add(parent); next.push(parent);
+        }
+      });
+    });
+    frontier = next;
+    if (!next.length) break;
+  }
+
+  return { upstream, downstream };
+}
+
+// ── depGraph 텍스트 요약 (프롬프트 주입용) ───────────────
+// targetFiles: Phase1 target 파일명 배열
+function buildDepGraphHint(targetFiles) {
+  if (!_depGraph || !targetFiles.length) return '';
+
+  const lines = [];
+  lines.push('=== Module Dependency Graph (2-hop) ===');
+  lines.push('(Use this to identify all files that may need port/signal updates)');
+  lines.push('');
+
+  const { upstream, downstream } = getAffectedFiles(targetFiles);
+
+  // target 파일 간 직접 연결
+  const targetSet = new Set(targetFiles);
+  targetFiles.forEach(f => {
+    const node = _depGraph[f];
+    if (!node) return;
+
+    // 포트 바인딩 요약 (downstream 방향)
+    node.instantiates.forEach(child => {
+      const bindings = node.portBindings[child] || [];
+      const bindStr  = bindings.slice(0, 6).map(b => `.${b.port}(${b.signal})`).join(', ');
+      const mark     = targetSet.has(child) ? '[TARGET]' : downstream.has(child) ? '[DOWNSTREAM]' : '';
+      lines.push(`  ${f}  →  ${child} ${mark}`);
+      if (bindStr) lines.push(`    ports: ${bindStr}${bindings.length > 6 ? ` ... +${bindings.length-6}` : ''}`);
+    });
+  });
+
+  // upstream 파일 (target을 인스턴스화하는 파일)
+  if (upstream.size) {
+    lines.push('');
+    lines.push('Upstream files (instantiate the target files — may need port updates):');
+    upstream.forEach(f => {
+      const node = _depGraph[f];
+      targetFiles.forEach(t => {
+        const bindings = node?.portBindings[t] || [];
+        const bindStr  = bindings.slice(0, 6).map(b => `.${b.port}(${b.signal})`).join(', ');
+        if (bindings.length) {
+          lines.push(`  ${f}  →  ${t}  [UPSTREAM]`);
+          lines.push(`    ports: ${bindStr}${bindings.length > 6 ? ` ... +${bindings.length-6}` : ''}`);
+        }
+      });
+    });
+  }
+
+  // downstream 파일 (target이 의존하는 파일)
+  if (downstream.size) {
+    lines.push('');
+    lines.push('Downstream files (instantiated by target — interface may change):');
+    downstream.forEach(f => lines.push(`  ${f}  [DOWNSTREAM]`));
+  }
+
+  return lines.join('\n');
+}
+
+// ── dep graph UI 표시 (Step 1 파일 목록 하단) ────────────
+function renderDepGraphBadge() {
+  const el = document.getElementById('depGraphBadge');
+  if (!el) return;
+  if (!_depGraph) { el.textContent = ''; return; }
+  const edgeCnt = Object.values(_depGraph).reduce((s, n) => s + n.instantiates.length, 0);
+  el.textContent = edgeCnt > 0
+    ? `↳ ${edgeCnt}개 의존 관계 감지됨`
+    : '↳ 의존 관계 없음 (독립 모듈)';
+  el.style.color = edgeCnt > 0 ? 'var(--green)' : 'var(--text3)';
+}
+
 // 프롬프트 컨텍스트 — _impactData의 최종 정리된 변경점만 사용
 function buildContextSection() {
   const algoText  = buildImpactText('algo');
   const uarchText = buildImpactText('uarch');
 
-  const algoSection  = algoText.trim()  ? `=== Algorithm RTL Change Points ===\n${algoText}`  : '';
-  const uarchSection = uarchText.trim() ? `=== μArch RTL Change Points ===\n${uarchText}`     : '';
+  const _cLang = getLang();
+  const algoSection  = algoText.trim()  ? `=== Algorithm ${_cLang.fileDesc} Change Points ===\n${algoText}`  : '';
+  const uarchSection = uarchText.trim() ? `=== μArch ${_cLang.fileDesc} Change Points ===\n${uarchText}`     : '';
 
   // Phase 2 결과: 관련 μArch 섹션 (Summary 분석 완료 시 우선 사용)
   let uarchRefSection = '';
@@ -2858,16 +3102,30 @@ function buildContextSection() {
     }
   }
 
-  if (!algoSection && !uarchSection) {
-    const base = '=== RTL Change Points: NONE DEFINED ===\n' +
-                 '(No AI analysis has been run. Convert may produce minimal changes.)';
-    return [base, uarchRefSection].filter(Boolean).join('\n\n');
+  // 변환 대상 파일의 의존 관계 힌트
+  let depHintSection = '';
+  if (_depGraph) {
+    const targetNames = rtlFiles
+      .filter(f => !f._p1Excluded && !f._p1Ref)
+      .map(f => f.name);
+    if (targetNames.length) {
+      const hint = buildDepGraphHint(targetNames);
+      if (hint) depHintSection = hint;
+    }
   }
-  return [algoSection, uarchSection, uarchRefSection].filter(Boolean).join('\n\n');
+
+  if (!algoSection && !uarchSection) {
+    const base = `=== ${getLang().fileDesc} Change Points: NONE DEFINED ===\n` +
+                 '(No AI analysis has been run. Convert may produce minimal changes.)';
+    return [base, uarchRefSection, depHintSection].filter(Boolean).join('\n\n');
+  }
+  return [algoSection, uarchSection, uarchRefSection, depHintSection].filter(Boolean).join('\n\n');
 }
 
 // RTL 파일을 module 경계로 분할
 function splitByModule(content) {
+  if (getLang().extractSig === 'systemc') return splitByModuleSC(content);
+  // Verilog/SV: module~endmodule 단위 분할
   const chunks = [];
   const lines = content.split('\n');
   let current = [];
@@ -2890,6 +3148,26 @@ function splitByModule(content) {
   return chunks.filter(c => c.trim());
 }
 
+function splitByModuleSC(content) {
+  // SystemC: SC_MODULE 클래스 단위 분할 (중괄호 깊이 추적)
+  const chunks = [];
+  let current = [], depth = 0, inModule = false;
+  for (const line of content.split('\n')) {
+    const t = line.trim();
+    if (!inModule && /SC_MODULE\s*\(/.test(t)) inModule = true;
+    current.push(line);
+    if (inModule) {
+      depth += (t.match(/{/g)||[]).length - (t.match(/}/g)||[]).length;
+      if (depth <= 0 && current.length > 2) {
+        chunks.push(current.join('\n'));
+        current = []; inModule = false; depth = 0;
+      }
+    }
+  }
+  if (current.length) chunks.push(current.join('\n'));
+  return chunks.filter(c => c.trim()) || [content];
+}
+
 function getTokenBudget() { return 24000; }  // 순차 처리 미사용, 호환성 유지
 
 // 파일이 토큰 예산 초과인지 확인 + 분할 필요 시 청크 목록 반환
@@ -2908,7 +3186,9 @@ function getChunks(content, contextOverhead) {
 
 // ── 모듈 시그니처 추출 (순차 처리용) ─────────────────────
 function extractSignature(rtlCode, fname) {
-  // module 선언 + port 목록 + parameter 추출 (첫 endmodule 직전까지 헤더만)
+  const lang = getLang();
+  if (lang.extractSig === 'systemc') return extractSignatureSC(rtlCode, fname);
+  // Verilog/SystemVerilog: module 선언 + port 목록 + parameter 추출
   const lines = rtlCode.split('\n');
   const sig = [];
   let inModule = false, depth = 0;
@@ -2922,11 +3202,32 @@ function extractSignature(rtlCode, fname) {
         depth--;
         if (depth <= 0) break;
       }
-      // 포트 선언 끝나면 (첫 always/assign/initial) 시그니처만 남기고 중단
       if (/^\s*(always|assign|initial|generate)\b/.test(t) && sig.length > 3) break;
     }
   }
   return `// === Module signature: ${fname} ===\n${sig.slice(0,40).join('\n')}\n// ...`;
+}
+
+function extractSignatureSC(scCode, fname) {
+  // SystemC: SC_MODULE 선언 + ポート/signal + コンストラクタ까지
+  const lines = scCode.split('\n');
+  const sig = [];
+  let inModule = false;
+  for (const line of lines) {
+    const t = line.trim();
+    if (!inModule && /SC_MODULE\s*\(/.test(t)) { inModule = true; }
+    if (inModule) {
+      sig.push(line);
+      // SC_CTOR or private: 이후 구현부 시작 → 중단
+      if (sig.length > 3 && /^\s*(SC_CTOR|SC_HAS_PROCESS|void\s+\w+|private:|public:)/.test(t)) break;
+      if (sig.length >= 40) break;
+    }
+  }
+  if (!sig.length) {
+    // fallback: 첫 40줄
+    return `// === SC_MODULE signature: ${fname} ===\n${lines.slice(0,30).join('\n')}\n// ...`;
+  }
+  return `// === SC_MODULE signature: ${fname} ===\n${sig.join('\n')}\n// ...`;
 }
 
 // ── Iteration (개선 지시) ─────────────────────────────────
@@ -2988,7 +3289,8 @@ async function analyzeAndSelect() {
     .map(f => `- ${f.name}: ${extractSignature(f.result, f.name).split('\n').slice(0,6).join(' | ')}`)
     .join('\n');
 
-  const analysisPrompt = `You are an RTL engineer. Given the user's improvement instruction and a list of RTL files with their module signatures, determine which files need to be modified.
+  const _asLang = getLang();
+  const analysisPrompt = `${_asLang.iterExpert} Given the user's improvement instruction and a list of ${_asLang.fileDesc} files with their module signatures, determine which files need to be modified.
 
 User instruction: "${userPrompt}"
 
@@ -3005,7 +3307,7 @@ Respond in JSON only (no markdown, no explanation):
   try {
     let raw = '';
     await callLLM(host, model,
-      'You are an RTL engineer. Respond only in valid JSON.',
+      `${getLang().impactExpert} Respond only in valid JSON.`,
       analysisPrompt,
       (partial) => { raw = partial; },
       'json-sel', _iaSignal
@@ -3097,9 +3399,6 @@ function saveInlineEdit(idx) {
 }
 
 // 기존 autoSelectFiles는 유지 (fallback용)
-function autoSelectFiles() {
-  // 분석 버튼 클릭 유도로 대체 — 자동 실행 없음
-}
 
 function updateIterTokenEst() {
   const selected = rtlFiles.filter(f => f._iterSelected !== false && f.result);
@@ -3136,9 +3435,10 @@ async function runIteration() {
     `=== File: ${f.name} (current version) ===\n${f.result}`
   ).join('\n\n');
 
-  const prompt = `You are an expert RTL (Verilog/SystemVerilog) engineer.
+  const _iLang = getLang();
+  const prompt = `${_iLang.iterExpert}
 
-The user has reviewed the converted RTL and wants the following improvement:
+The user has reviewed the converted ${_iLang.fileDesc} and wants the following improvement:
 
 === User instruction ===
 ${userPrompt}
@@ -3153,7 +3453,7 @@ Rules:
 - If a change is related to a previous impact ID (ALGO-xxx or ARCH-xxx), preserve that ID in the IDS field
 - Output format:
     ===FILE: <filename>===
-    <complete modified RTL>
+    <complete modified ${_iLang.fileDesc}>
     ===CHANGES: <filename>===
     SOURCE|TYPE|IDS|description
     (SOURCE=ALGO/UARCH/BOTH/ITER, TYPE=ADD/MOD/REMOVE,
@@ -3180,7 +3480,7 @@ Rules:
     };
 
     const { raw, finish } = await callLLM(host, model,
-      'You are an expert RTL engineer. Apply only the requested changes precisely.',
+      `${getLang().iterExpert} Apply only the requested changes precisely.`,
       prompt, onChunk,
       'rtl', _iterSignal
     );
@@ -3303,7 +3603,7 @@ function showVersion(fileIdx, histIdx) {
     const sc  = c.source==='UARCH'?'ua':c.source==='BOTH'?'add':c.source==='ITER'?'mod':'mod';
     const tc  = c.type==='ADD'?'add':c.type==='REMOVE'?'rem':'mod';
     const sl  = c.source==='UARCH'?'μARCH':c.source==='BOTH'?'BOTH':c.source==='ITER'?'ITER':'ALGO';
-    const ids = renderIdBadges(c.ids);
+    const ids = renderIdBadges(c.ids, true);
     return `<div class="ci"><span class="pill ${sc}">${sl}</span><span class="pill ${tc}">${c.type}</span>${ids}<p>${esc(c.desc)}</p></div>`;
   }).join('') || `<div style="font-family:var(--mono);font-size:11px;color:var(--text3);">변경 목록 없음</div>`;
 
@@ -3336,118 +3636,9 @@ function showVersion(fileIdx, histIdx) {
 }
 
 // ── RTL 영향 변경점 분석 ──────────────────────────────────
-async function analyzeRtlImpact(mk) {
-  const impactId  = mk === 'algo' ? 'adImpact' : 'udImpact';
-  const pairsData = mk === 'algo' ? algoPairs : uarchPairs;
-  const label     = mk === 'algo' ? 'Algorithm' : 'μArch';
-  const impactEl  = document.getElementById(impactId);
-  const btn       = document.getElementById(mk === 'algo' ? 'adAnalyzeBtn' : 'udAnalyzeBtn');
 
-  if (!pairsData.length) {
-    impactEl.innerHTML = '<div style="font-family:var(--mono);font-size:11px;color:var(--text3);">먼저 diff를 생성하세요</div>';
-    return;
-  }
-
-  const host  = (document.getElementById('oHost').value||'').replace(/\/+$/, '');
-  const model = getSelectedModel();
-
-  const _aiKey = mk === 'algo' ? 'algo-analyze' : 'uarch-analyze';
-  const _aiStop = mk === 'algo' ? 'adStopBtn' : 'udStopBtn';
-  const _aiSignal = _llmFreeze(_aiKey, mk === 'algo' ? 'adAnalyzeBtn' : 'udAnalyzeBtn', _aiStop, '분석 중…');
-  impactEl.innerHTML = '<div style="font-family:var(--mono);font-size:11px;color:var(--amber);">AI 분석 중…</div>';
-
-  // 현재 활성 pair의 diff 내용 추출
-  const diffItems = pairsData.map(p => {
-    const lines = diffLines(
-      (p.a || '').split('\n'),
-      (p.b || '').split('\n')
-    ).filter(x => x.t !== 's').map(x => `${x.t === 'a' ? '+' : '-'} ${x.x.trim()}`);
-    return `### ${p.label}\n${lines.slice(0, 80).join('\n') || '(변경 없음)'}`;
-  }).join('\n\n');
-
-  const prompt = `You are an expert RTL (Verilog/SystemVerilog) engineer.
-
-Analyze the following ${label} diff and extract ONLY the changes that are directly relevant to RTL implementation.
-For each relevant change, classify it and explain the RTL impact concisely.
-
-${label} Diff:
-${diffItems}
-
-Respond in JSON only (no markdown):
-{
-  "items": [
-    {
-      "category": "port|signal|timing|parameter|logic|interface",
-      "priority": "high|med|low",
-      "change": "brief description of what changed",
-      "rtl_impact": "what RTL code needs to change (be specific: signal width, port direction, always block, parameter, etc.)",
-      "affected": ["signal or port names involved (NOT .v filenames)"]
-    }
-  ],
-  "summary": "one-line overall RTL impact summary"
-}
-
-Rules:
-- Only include changes that require RTL code modification
-- Skip documentation-only, comment, or naming changes with no RTL impact
-- Be specific about RTL constructs (signals, ports, parameters, always blocks, etc.)
-- Do NOT infer target_modules or port_impact — RTL files are not loaded at this stage
-- "affected" must list signal/port/parameter names only, never .v filenames
-- If no RTL-relevant changes, return empty items array`;
-
-  try {
-    let raw = '';
-    const t0 = Date.now();
-
-    await callLLM(host, model,
-      'You are an RTL engineer. Respond only in valid JSON.',
-      prompt,
-      partial => {
-        raw = partial;
-        const tc      = Math.round(partial.length / 3.5);
-        const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-        impactEl.innerHTML = `
-          <div style="display:flex;flex-direction:column;gap:10px;padding:4px 0;">
-            <div style="display:flex;align-items:center;gap:8px;">
-              <span class="spin" style="display:inline-block;font-size:14px;animation:spin .8s linear infinite;">◌</span>
-              <span style="font-family:var(--mono);font-size:11px;color:var(--amber);">분석 중…</span>
-            </div>
-            <div style="font-family:var(--mono);font-size:11px;color:var(--text2);display:flex;gap:16px;">
-              <span>토큰 <span style="color:var(--accent);">~${tc.toLocaleString()}</span></span>
-              <span>경과 <span style="color:var(--accent);">${elapsed}s</span></span>
-            </div>
-            <div style="font-family:var(--mono);font-size:10px;color:var(--text3);max-height:120px;overflow:hidden;line-height:1.5;word-break:break-all;opacity:.6;">${esc(partial.slice(-200))}</div>
-          </div>`;
-      },
-      'json', _aiSignal
-    );
-
-    const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error('JSON 파싱 실패');
-    const result  = JSON.parse(jsonMatch[0]);
-    const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-
-    _impactSave(mk);           // undo 스냅샷
-    _impactData[mk] = result;
-    renderImpactPanel(impactEl, result, label);
-    dbgLog('RES', `[RTL impact LLM] ${JSON.stringify(result)}`, 'res');  // ③ LLM 응답 콘솔
-
-    // 헤더 카운트에 소요 시간 표시
-    const cntEl = getImpactCnt(mk);
-    if (cntEl) cntEl.textContent = `${result.items?.length || 0}개 · ${elapsed}s`;
-
-    dbgLog('INF', `[RTL impact] ${label}: ${result.items?.length || 0}개 항목  ${elapsed}s`, 'inf');
-
-  } catch(e) {
-    impactEl.innerHTML = `<div style="font-family:var(--mono);font-size:11px;color:var(--red);">분석 실패: ${esc(e.message)}</div>`;
-    dbgLog('ERR', `[RTL impact] ${e.message}`, 'err');
-  } finally {
-    _llmUnfreeze(_aiKey);
-  }
-}
-
-// ── RTL impact 데이터 저장소 ─────────────────────────────
-const _impactData = { algo: null, uarch: null };
+// ── Impact 데이터 저장소 및 undo/redo ────────────────────────
+const _impactData    = { algo: null, uarch: null };
 const _impactHistory = { algo: [], uarch: [] };  // undo 스택
 const _impactRedo    = { algo: [], uarch: [] };  // redo 스택
 
@@ -3487,12 +3678,12 @@ function updateUndoRedoBtns(mk) {
   if (rBtn) rBtn.disabled = !_impactRedo[mk].length;
 }
 
-function getImpactEl(mk)  { return document.getElementById(mk === 'algo' ? 'adImpact'      : 'udImpact'); }
-function getImpactAdd(mk) { return document.getElementById(mk === 'algo' ? 'adImpactAdd'   : 'udImpactAdd'); }
+function getImpactEl(mk)   { return document.getElementById(mk === 'algo' ? 'adImpact'      : 'udImpact'); }
+function getImpactAdd(mk)  { return document.getElementById(mk === 'algo' ? 'adImpactAdd'   : 'udImpactAdd'); }
 function getImpactInput(mk){ return document.getElementById(mk === 'algo' ? 'adImpactInput' : 'udImpactInput'); }
-function getImpactCnt(mk) { return document.getElementById(mk === 'algo' ? 'adImpactCnt'   : 'udImpactCnt'); }
+function getImpactCnt(mk)  { return document.getElementById(mk === 'algo' ? 'adImpactCnt'   : 'udImpactCnt'); }
 
-// ── 추가 지시 포함 전체 재분석 ───────────────────────────
+
 async function reAnalyzeImpact(mk) {
   const input     = getImpactInput(mk);
   const extraNote = input?.value.trim() || '';
@@ -3552,9 +3743,10 @@ async function reAnalyzeImpact(mk) {
   const existingIds = (_impactData[mk]?.items || [])
     .map(it => it.id).filter(Boolean).join(', ') || 'none';
 
-  const prompt = `You are an expert RTL (Verilog/SystemVerilog) engineer.
+  const _raLang = getLang();
+  const prompt = `${_raLang.impactExpert}
 
-Analyze the following ${label} diff and extract ONLY the changes directly relevant to RTL implementation.
+Analyze the following ${label} diff and extract ONLY the changes directly relevant to ${_raLang.fileDesc} implementation.
 ${existingItems}${extraSection}
 
 ${label} Diff:
@@ -3568,24 +3760,24 @@ Respond in JSON only (no markdown):
       "category": "port|signal|timing|parameter|logic|interface",
       "priority": "high|med|low",
       "change": "brief description of what changed",
-      "rtl_impact": "what RTL code needs to change (specific construct: signal width, port direction, always block, parameter, etc.)",
-      "affected": ["signal or port names involved (NOT .v filenames)"]
+      "rtl_impact": "what ${_raLang.fileDesc} code needs to change (specific construct: ${_raLang.construct})",
+      "affected": ["signal or port names involved (NOT filenames)"]
     }
   ],
-  "summary": "one-line overall RTL impact summary"
+  "summary": "one-line overall ${_raLang.fileDesc} impact summary"
 }
 
 Rules:
 - Assign a UNIQUE sequential ID to every item using prefix ${idPrefix} (e.g., ${idPrefix}-001, ${idPrefix}-002). No duplicates. Already used IDs: [${existingIds}]
-- Only include changes that require RTL code modification
-- Do NOT infer target_modules or port_impact — RTL files are not loaded at this stage
-- "affected" must list signal/port/parameter names only, never .v filenames
+- Only include changes that require ${_raLang.fileDesc} code modification
+- Do NOT infer target_modules or port_impact — ${_raLang.fileDesc} files are not loaded at this stage
+- "affected" must list signal/port/parameter names only, never filenames
 - Incorporate the engineer's additional instruction if provided
-- Be specific about RTL constructs`;
+- Be specific about ${_raLang.fileDesc} constructs (${_raLang.construct})`;
 
   try {
     let raw = '';
-    await callLLM(host, model, 'You are an RTL engineer. Respond only in valid JSON.', prompt,
+    await callLLM(host, model, `${getLang().impactExpert} Respond only in valid JSON.`, prompt,
       partial => {
         raw = partial;
         const tc      = Math.round(partial.length / 3.5);
@@ -3633,51 +3825,6 @@ Rules:
 }
 
 // ── 항목 추가 (자연어 → LLM 구조화) ─────────────────────
-async function addImpactItem(mk) {
-  const input = getImpactInput(mk);
-  const text  = input?.value.trim();
-  if (!text) return;
-
-  const host  = (document.getElementById('oHost').value||'').replace(/\/+$/, '');
-  const model = getSelectedModel();
-
-  input.disabled = true;
-  input.value    = '분석 중…';
-
-  const prompt = `Classify this RTL change description and respond in JSON only:
-"${text}"
-
-{
-  "category": "port|signal|timing|parameter|logic|interface",
-  "priority": "high|med|low",
-  "change": "concise description",
-  "rtl_impact": "specific RTL construct to modify",
-  "affected": ["module_or_signal"]
-}`;
-
-  try {
-    let raw = '';
-    await callLLM(host, model, 'Respond only in valid JSON.', prompt, p => { raw = p; }, 'json-sm');
-    const m = raw.match(/\{[\s\S]*\}/);
-    if (!m) throw new Error('JSON 파싱 실패');
-    const item = { ...JSON.parse(m[0]), _userAdded: true };
-
-    _impactSave(mk);  // undo 저장
-    if (!_impactData[mk]) _impactData[mk] = { items: [], summary: '' };
-    _impactData[mk].items.push(item);
-    renderImpactPanel(getImpactEl(mk), _impactData[mk], mk === 'algo' ? 'Algorithm' : 'μArch');
-    updateImpactCnt(mk);
-    input.value = '';
-    dbgLog('INF', `[impact add] ${mk}: "${item.change}"`, 'inf');
-  } catch(e) {
-    dbgLog('ERR', `[impact add] ${e.message}`, 'err');
-    input.value = '';
-    alert(`항목 추가 실패: ${e.message}`);
-  } finally {
-    input.disabled = false;
-    input.focus();
-  }
-}
 
 // ── 항목 삭제 ─────────────────────────────────────────────
 function deleteImpactItem(mk, idx) {
@@ -3764,7 +3911,8 @@ async function llmEditItem(mk, idx) {
   const llmInput = document.getElementById(`ei-llm-${mk}-${idx}`);
   if (llmInput) { llmInput.disabled = true; llmInput.value = 'AI 수정 중…'; }
 
-  const prompt = `You are an RTL engineer. Modify the following RTL change item according to the user's request.
+  const _eLang = getLang();
+  const prompt = `${_eLang.impactExpert} Modify the following ${_eLang.fileDesc} change item according to the user's request.
 
 Current item:
 ${JSON.stringify(item, null, 2)}
@@ -3843,7 +3991,9 @@ function renderImpactPanel(el, result, label) {
 
   const html = items.map((item, i) => {
     const idBadge = item.id
-      ? `<span style="font-family:var(--mono);font-size:10px;padding:1px 7px;border-radius:3px;background:var(--s2);color:var(--text3);border:1px solid var(--border);margin-right:4px;">${esc(item.id)}</span>`
+      ? `<span onclick="highlightDiffById('${mk}','${item.id}')"
+           style="font-family:var(--mono);font-size:10px;padding:1px 7px;border-radius:3px;background:var(--s2);color:var(--text3);border:1px solid var(--border);margin-right:4px;cursor:pointer;text-decoration:underline dotted;"
+           title="LCS Diff에서 관련 라인 하이라이트">${esc(item.id)}</span>`
       : '';
 
     const affectedRow = item.affected?.length
@@ -4055,7 +4205,7 @@ function startAutoRun() {
       ${steps.map((s, i) => `<span style="color:var(--text3);">${i+1}.</span> ${s}`).join('<br>')}
     </div>
     <div style="margin-top:10px;font-size:11px;color:var(--text3);">
-      RTL 파일: ${rtlFiles.length}개 · ${hasAlgo?'Algo ✓':'Algo –'} · ${hasUarch?'μArch ✓':'μArch –'}
+      ${getLang().fileDesc} 파일: ${rtlFiles.length}개 · ${hasAlgo?'Algo ✓':'Algo –'} · ${hasUarch?'μArch ✓':'μArch –'}
     </div>`;
 
   document.getElementById('autoRunModal').style.display = 'flex';
@@ -4225,9 +4375,10 @@ async function _autoRunAnalyze(mk, host, model) {
     return `### ${p.label}\n${lines.slice(0,80).join('\n')||'(변경 없음)'}`;
   }).join('\n\n');
 
-  const prompt = `You are an expert RTL (Verilog/SystemVerilog) engineer.
+  const _arLang = getLang();
+  const prompt = `${_arLang.impactExpert}
 
-Analyze the following ${label} diff and extract ONLY the changes directly relevant to RTL implementation.
+Analyze the following ${label} diff and extract ONLY the changes directly relevant to ${_arLang.fileDesc} implementation.
 
 ${label} Diff:
 ${diffItems}
@@ -4240,23 +4391,23 @@ Respond in JSON only (no markdown):
       "category": "port|signal|timing|parameter|logic|interface",
       "priority": "high|med|low",
       "change": "brief description of what changed",
-      "rtl_impact": "what RTL code needs to change (specific construct: signal width, port direction, always block, parameter, etc.)",
-      "affected": ["signal or port names involved (NOT .v filenames)"]
+      "rtl_impact": "what ${_arLang.fileDesc} code needs to change (specific construct: ${_arLang.construct})",
+      "affected": ["signal or port names involved (NOT filenames)"]
     }
   ],
-  "summary": "one-line overall RTL impact summary"
+  "summary": "one-line overall ${_arLang.fileDesc} impact summary"
 }
 
 Rules:
 - Assign a UNIQUE sequential ID using prefix ${idPrefix} (e.g., ${idPrefix}-001). No duplicates. Already used: [${existingIds}]
-- Only include changes requiring RTL code modification
-- Do NOT infer target_modules or port_impact — RTL files not loaded at this stage
+- Only include changes requiring ${_arLang.fileDesc} code modification
+- Do NOT infer target_modules or port_impact — ${_arLang.fileDesc} files not loaded at this stage
 - "affected" must list signal/port/parameter names only
-- If no RTL-relevant changes, return empty items array`;
+- If no ${_arLang.fileDesc}-relevant changes, return empty items array`;
 
   try {
     let raw = '';
-    await callLLM(host, model, 'You are an RTL engineer. Respond only in valid JSON.',
+    await callLLM(host, model, `${getLang().impactExpert} Respond only in valid JSON.`,
       prompt, partial => { raw = partial; }, 'json', signal);
 
     const m = raw.match(/\{[\s\S]*\}/);
@@ -4319,6 +4470,103 @@ async function _autoRunConvert() {
   });
 }
 
+// ════════════════════════════════════════════════════════
+// ID 기반 네비게이션
+// ════════════════════════════════════════════════════════
+
+// Summary/Results의 ID 뱃지 클릭 → Diff 탭으로 이동 + 항목 하이라이트
+function navigateToImpactId(id) {
+  const mk   = id.startsWith('ALGO') ? 'algo' : id.startsWith('ARCH') ? 'uarch' : null;
+  if (!mk) return;
+
+  // 해당 Diff 스텝으로 이동 (Algo Diff=cur 2, μArch Diff=cur 4)
+  const stepIdx = mk === 'algo' ? 2 : 4;
+  goStep(stepIdx);
+
+  // 잠깐 대기 후 항목 하이라이트 (DOM 렌더링 완료 후)
+  requestAnimationFrame(() => {
+    highlightImpactItem(mk, id);
+    highlightDiffById(mk, id);
+  });
+}
+
+// Impact 패널에서 해당 ID 항목 하이라이트
+function highlightImpactItem(mk, id) {
+  const items = _impactData[mk]?.items || [];
+  const idx   = items.findIndex(it => it.id === id);
+  if (idx < 0) return;
+
+  const el = document.getElementById(`impact-item-${mk}-${idx}`);
+  if (!el) return;
+
+  // 기존 하이라이트 제거
+  document.querySelectorAll('.impact-item-nav-hl').forEach(e => {
+    e.classList.remove('impact-item-nav-hl');
+    e.style.outline = '';
+  });
+
+  // 하이라이트 + 스크롤
+  el.style.outline = '2px solid var(--accent)';
+  el.classList.add('impact-item-nav-hl');
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+  // 2초 후 해제
+  setTimeout(() => {
+    el.style.outline = '';
+    el.classList.remove('impact-item-nav-hl');
+  }, 2500);
+}
+
+// Diff LCS 블록에서 해당 ID가 관련된 라인 하이라이트
+// → impact item의 affected 신호/포트명을 diff 라인에서 검색
+function highlightDiffById(mk, id) {
+  const blockId = mk === 'algo' ? 'adBlock' : 'udBlock';
+  const block   = document.getElementById(blockId);
+  if (!block) return;
+
+  const items = _impactData[mk]?.items || [];
+  const item  = items.find(it => it.id === id);
+  if (!item) return;
+
+  // 검색 키워드: affected 신호/포트명 + rtl_impact에서 추출
+  const keywords = [
+    ...(item.affected || []),
+    // rtl_impact에서 식별자처럼 보이는 단어 추출 (camelCase, snake_case)
+    ...(item.rtl_impact?.match(/[a-zA-Z_][a-zA-Z0-9_]{2,}/g) || []).slice(0, 5),
+  ].filter(Boolean).map(k => k.trim().toLowerCase());
+
+  if (!keywords.length) return;
+
+  // 기존 하이라이트 해제
+  block.querySelectorAll('.diff-id-hl').forEach(e => {
+    e.classList.remove('diff-id-hl');
+    e.style.boxShadow = '';
+  });
+
+  let firstMatch = null;
+  block.querySelectorAll('.dl').forEach(line => {
+    const text = line.textContent.toLowerCase();
+    const hit  = keywords.some(kw => kw.length > 2 && text.includes(kw));
+    if (hit) {
+      line.style.boxShadow = 'inset 3px 0 0 var(--accent)';
+      line.classList.add('diff-id-hl');
+      if (!firstMatch) firstMatch = line;
+    }
+  });
+
+  if (firstMatch) {
+    firstMatch.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  // 3초 후 해제
+  setTimeout(() => {
+    block.querySelectorAll('.diff-id-hl').forEach(e => {
+      e.classList.remove('diff-id-hl');
+      e.style.boxShadow = '';
+    });
+  }, 3000);
+}
+
 function _syncResultHandles() {
   const mon  = document.getElementById('monPanel').style.display  !== 'none';
   const iter = document.getElementById('iterPanel').style.display !== 'none';
@@ -4363,10 +4611,6 @@ function logImpactUsage() {
 function monShow() {
   document.getElementById('monPanel').style.display = '';
   document.getElementById('monSteps').innerHTML = '';
-  _syncResultHandles();
-}
-function monHide() {
-  document.getElementById('monPanel').style.display = 'none';
   _syncResultHandles();
 }
 function monSetStatus(msg, color) {
@@ -4527,7 +4771,7 @@ async function runSequential(ctx, startIdx = 0) {
 
         const { raw, finish } = await callLLM(
           host, model,
-          'You are an expert RTL (Verilog/SystemVerilog) engineer. Follow all instructions exactly.',
+          `${getLang().expert} Follow all instructions exactly.`,
           prompt, onChunk,
           'rtl'
         );
@@ -4595,7 +4839,7 @@ async function runSingleContext(ctx) {
 
   // 제외 파일은 단일 컨텍스트에서도 제외
   const activeFiles = rtlFiles.filter(f => !f._p1Excluded);
-  const allRtl      = activeFiles.map(f => `=== File: ${f.name} ===\n${f.content}`).join('\n\n');
+  const allRtl      = activeFiles.map(f => `=== ${getLang().fileDesc} File: ${f.name} ===\n${f.content}`).join('\n\n');
   const ctxSection  = buildContextSection();   // impact 데이터만
   const totalTokens = Math.round(allRtl.length / 3.5);
   const algoN  = _impactData.algo?.items?.length  || 0;
@@ -4609,15 +4853,15 @@ async function runSingleContext(ctx) {
 
   const prompt = `You are an expert RTL (Verilog/SystemVerilog) engineer.
 
-Apply the following finalized RTL change points to ALL provided files simultaneously.
+Apply the following finalized ${getLang().fileDesc} change points to ALL provided files simultaneously.
 
 Rules:
 - Apply ALL listed change points to every relevant file
 - Each changed/added line: add ONE comment // ALGO: / // UARCH: / // BOTH: <reason>
-- Maintain correct port connections across modules
+- Maintain correct port/interface connections across modules
 - Output format for each file:
     ===FILE: <filename>===
-    <complete modified RTL code>
+    <complete modified ${getLang().fileDesc} code>
     ===CHANGES: <filename>===
     SOURCE|TYPE|IDS|description
     (IDS=comma-separated impact IDs, e.g. ALGO-001,ARCH-002; NONE if not traceable)
@@ -4645,7 +4889,7 @@ ${allRtl}`;
       setStatus('lo', `단일 변환 중… ~${tokenCount.toLocaleString()} tokens`);
     };
     const { raw, finish } = await callLLM(host, model,
-      'You are an expert RTL (Verilog/SystemVerilog) engineer. Follow all instructions exactly.',
+      `${getLang().expert} Follow all instructions exactly.`,
       prompt, onChunk,
       'rtl'
     );
@@ -4701,17 +4945,18 @@ ${allRtl}`;
 
 function buildPrompt(rtl, fname) {
   const ctxSection = buildContextSection();
-  return `You are an expert RTL (Verilog/SystemVerilog) engineer.
+  const lang = getLang();
+  return `${lang.expert}
 
 File: ${fname}
 
-Apply the following RTL change points to the existing code.
+Apply the following change points to the existing ${lang.fileDesc} code.
 Each change point has been reviewed and finalized by the engineering team.
 
 Rules:
 - Apply ALL listed change points precisely
 - Each changed/added line: add ONE inline comment — // ALGO: / // UARCH: / // BOTH: <brief reason>
-- Output ONLY the complete modified RTL file (no markdown, no backticks)
+- Output ONLY the complete modified ${lang.fileDesc} file (no markdown, no backticks)
 - After the code, output exactly: ===CHANGES===
 - Then list each change: SOURCE|TYPE|IDS|description
   (SOURCE=ALGO/UARCH/BOTH, TYPE=ADD/MOD/REMOVE,
@@ -4719,7 +4964,7 @@ Rules:
 
 ${ctxSection}
 
-=== Existing RTL: ${fname} ===
+=== Existing ${lang.fileDesc}: ${fname} ===
 ${rtl}`;
 }
 
@@ -4762,7 +5007,7 @@ function showRes(idx){
     const sc  = c.source==='UARCH'?'ua':c.source==='BOTH'?'add':c.source==='ITER'?'mod':'mod';
     const tc  = c.type==='ADD'?'add':c.type==='REMOVE'?'rem':'mod';
     const sl  = c.source==='UARCH'?'μARCH':c.source==='BOTH'?'BOTH':c.source==='ITER'?'ITER':'ALGO';
-    const ids = renderIdBadges(c.ids);
+    const ids = renderIdBadges(c.ids, true);
     return`<div class="ci"><span class="pill ${sc}">${sl}</span><span class="pill ${tc}">${c.type}</span>${ids}<p>${esc(c.desc)}</p></div>`;
   }).join('');
 
