@@ -1695,6 +1695,7 @@ async function runSummaryPhase2(host, model, utText) {
   const lang2 = getLang();
   const prompt = `${lang2.impactExpert}
 
+${UARCH_TABLE_RULES}
 Given the following ${lang2.fileDesc} files that need modification and their affected ports/signals,
 identify which sections of the TO-BE μArch document are most relevant.
 
@@ -1955,6 +1956,33 @@ const convMode = 'single';  // 기본 단일 컨텍스트
 
 // ── 출력 언어 설정 ────────────────────────────────────────
 let _outputLang = 'rtl';  // 'rtl' | 'systemc'
+
+// ── μArch 문서 테이블 해석 규칙 ─────────────────────────
+// μArch 내용을 LLM에 전달할 때 항상 앞에 포함
+const UARCH_TABLE_RULES = `[μArch Document Interpretation Rules]
+The following μArch content may contain plain text and/or encoded table data.
+
+Table encoding format:
+  [TABLE n | SCHEMA]: column names of table n
+  [TABLE n | ROW k]: row k of table n, encoded as column=value pairs separated by semicolons
+
+Rules for interpreting tables:
+- Treat tables as the PRIMARY source of factual information over plain text.
+- For questions involving conditions, numbers, criteria, periods, comparisons, or lists — check table rows first.
+- Each row is a complete, independent record.
+- Merged cells have already been expanded into individual rows.
+- Restore these markers before interpreting:
+    <SAME_AS_ABOVE> = same value as the cell above in the same column
+    <SAME_AS_LEFT>  = same value as the cell to the left in the same row
+- If multiple rows match a query, consider ALL relevant rows.
+- Do not guess missing or unclear values.
+- For multiple-choice / checkbox items:
+    A filled/checked/emphasized mark (■ ● ✔ ▶) means SELECTED / TRUE.
+    An empty/unemphasized mark (□ ○ △) means UNSELECTED / FALSE.
+    Judge by mark state only, not by shape.
+`;
+
+
 
 const LANG_CFG = {
   rtl: {
@@ -3030,10 +3058,10 @@ function buildDepGraphHint(targetFiles) {
     // 포트 바인딩 요약 (downstream 방향)
     node.instantiates.forEach(child => {
       const bindings = node.portBindings[child] || [];
-      const bindStr  = bindings.slice(0, 6).map(b => `.${b.port}(${b.signal})`).join(', ');
+      const bindStr  = bindings.map(b => `.${b.port}(${b.signal})`).join(', ');
       const mark     = targetSet.has(child) ? '[TARGET]' : downstream.has(child) ? '[DOWNSTREAM]' : '';
       lines.push(`  ${f}  →  ${child} ${mark}`);
-      if (bindStr) lines.push(`    ports: ${bindStr}${bindings.length > 6 ? ` ... +${bindings.length-6}` : ''}`);
+      if (bindStr) lines.push(`    ports: ${bindStr}`);
     });
   });
 
@@ -3045,10 +3073,10 @@ function buildDepGraphHint(targetFiles) {
       const node = _depGraph[f];
       targetFiles.forEach(t => {
         const bindings = node?.portBindings[t] || [];
-        const bindStr  = bindings.slice(0, 6).map(b => `.${b.port}(${b.signal})`).join(', ');
+        const bindStr  = bindings.map(b => `.${b.port}(${b.signal})`).join(', ');
         if (bindings.length) {
           lines.push(`  ${f}  →  ${t}  [UPSTREAM]`);
-          lines.push(`    ports: ${bindStr}${bindings.length > 6 ? ` ... +${bindings.length-6}` : ''}`);
+          lines.push(`    ports: ${bindStr}`);
         }
       });
     });
@@ -3062,6 +3090,36 @@ function buildDepGraphHint(targetFiles) {
   }
 
   return lines.join('\n');
+}
+
+// ── dep graph 전체 관계 요약 (Phase 1 미실행 시) ────────────
+// 모든 파일 간 인스턴스 연결 관계를 평면적으로 나열
+function buildDepGraphHintAll() {
+  if (!_depGraph) return '';
+
+  const edgeLines = [];
+  let hasEdge = false;
+
+  Object.entries(_depGraph).forEach(([parent, node]) => {
+    node.instantiates.forEach(child => {
+      hasEdge = true;
+      const bindings = node.portBindings[child] || [];
+      const bindStr  = bindings.map(b => `.${b.port}(${b.signal})`).join(', ');
+      edgeLines.push(`  ${parent}  →  ${child}`);
+      if (bindStr) edgeLines.push(`    ports: ${bindStr}`);
+    });
+  });
+
+  if (!hasEdge) return '';
+
+  return [
+    '=== Module Dependency Graph ===',
+    '(Instantiation relationships between uploaded files)',
+    '',
+    ...edgeLines,
+    '',
+    'When modifying a file, ensure port/signal consistency with all connected files above.',
+  ].join('\n');
 }
 
 // ── dep graph UI 표시 (Step 1 파일 목록 하단) ────────────
@@ -3092,12 +3150,14 @@ function buildContextSection() {
       `--- Section [${s.idx}]: ${s.title} ---\n${s.text}`
     ).join('\n\n');
     uarchRefSection = `=== Relevant TO-BE μArch Sections ===\n` +
-      `(Extracted sections most relevant to this RTL file)\n${secTexts}`;
+      UARCH_TABLE_RULES + '\n' +
+      `(Extracted sections most relevant to this ${getLang().fileDesc} file)\n${secTexts}`;
   } else if (isIncludeNewUarch()) {
     // fallback: 분석 미실행 시 전문 포함 옵션이 켜져 있으면 전문 사용
     const utText = getText('ut');
     if (utText.trim()) {
       uarchRefSection = `=== TO-BE μArch Document (Full) ===\n` +
+        UARCH_TABLE_RULES + '\n' +
         `(Use this as the authoritative reference for the target micro-architecture.)\n${utText.trim()}`;
     }
   }
@@ -3105,11 +3165,16 @@ function buildContextSection() {
   // 변환 대상 파일의 의존 관계 힌트
   let depHintSection = '';
   if (_depGraph) {
-    const targetNames = rtlFiles
-      .filter(f => !f._p1Excluded && !f._p1Ref)
-      .map(f => f.name);
+    // Phase 1 완료 시: target 파일 기준 upstream/downstream 표시
+    // Phase 1 미실행 시: 전체 파일 대상으로 파일 간 연결 관계 표시
+    const p1Done = _summaryTargetFiles.length > 0;
+    const targetNames = p1Done
+      ? rtlFiles.filter(f => !f._p1Excluded && !f._p1Ref).map(f => f.name)
+      : rtlFiles.map(f => f.name);
     if (targetNames.length) {
-      const hint = buildDepGraphHint(targetNames);
+      const hint = p1Done
+        ? buildDepGraphHint(targetNames)
+        : buildDepGraphHintAll();   // 전체 관계 요약
       if (hint) depHintSection = hint;
     }
   }
@@ -3724,29 +3789,32 @@ async function reAnalyzeImpact(mk) {
     return `### ${p.label}\n${lines.slice(0, 80).join('\n') || '(변경 없음)'}`;
   }).join('\n\n');
 
-  // 기존 항목 현황도 참고로 전달
-  const existingItems = _impactData[mk]?.items?.length
-    ? `\n\nCurrently extracted items (${_impactData[mk].items.length} items):\n` +
+  // 추가 지시 없으면 완전 재분석 (ID 001부터 새로 시작)
+  // 추가 지시 있으면 기존 항목 참고해서 보완
+  const hasExtra = !!extraNote;
+
+  const existingItems = hasExtra && _impactData[mk]?.items?.length
+    ? `\n\nCurrently extracted items (${_impactData[mk].items.length} items, for reference):\n` +
       _impactData[mk].items.map((it, i) =>
         `${i+1}. [${it.priority?.toUpperCase()}][${it.category}] ${it.change}`
       ).join('\n')
     : '';
 
-  const extraSection = extraNote
+  const extraSection = hasExtra
     ? `\n\nAdditional instruction from engineer:\n"${extraNote}"\nPlease incorporate this when extracting and classifying items.`
     : '';
 
   // ID 접두어: label 기반
   const idPrefix = mk === 'algo' ? 'ALGO' : 'ARCH';
 
-  // 기존 ID 목록 (중복 방지)
-  const existingIds = (_impactData[mk]?.items || [])
-    .map(it => it.id).filter(Boolean).join(', ') || 'none';
+  // 재분석 시 항상 001부터 시작 (추가 지시가 있어도 기존 ID는 참고만)
+  const existingIds = 'none';
 
   const _raLang = getLang();
+  const tableRules = mk === 'uarch' ? UARCH_TABLE_RULES + '\n' : '';
   const prompt = `${_raLang.impactExpert}
 
-Analyze the following ${label} diff and extract ONLY the changes directly relevant to ${_raLang.fileDesc} implementation.
+${tableRules}Analyze the following ${label} diff and extract ONLY the changes directly relevant to ${_raLang.fileDesc} implementation.
 ${existingItems}${extraSection}
 
 ${label} Diff:
@@ -3768,11 +3836,11 @@ Respond in JSON only (no markdown):
 }
 
 Rules:
-- Assign a UNIQUE sequential ID to every item using prefix ${idPrefix} (e.g., ${idPrefix}-001, ${idPrefix}-002). No duplicates. Already used IDs: [${existingIds}]
+- Assign a UNIQUE sequential ID to every item using prefix ${idPrefix} starting from ${idPrefix}-001
+- Do NOT reuse or continue from previous IDs — always start fresh from 001
 - Only include changes that require ${_raLang.fileDesc} code modification
 - Do NOT infer target_modules or port_impact — ${_raLang.fileDesc} files are not loaded at this stage
 - "affected" must list signal/port/parameter names only, never filenames
-- Incorporate the engineer's additional instruction if provided
 - Be specific about ${_raLang.fileDesc} constructs (${_raLang.construct})`;
 
   try {
@@ -4367,7 +4435,7 @@ async function _autoRunAnalyze(mk, host, model) {
 
   const label = mk === 'algo' ? 'Algorithm' : 'μArch';
   const idPrefix = mk === 'algo' ? 'ALGO' : 'ARCH';
-  const existingIds = (_impactData[mk]?.items || []).map(it => it.id).filter(Boolean).join(', ') || 'none';
+  const existingIds = 'none';  // 항상 001부터 새로 시작
 
   const diffItems = pairsData.map(p => {
     const lines = diffLines((p.a||'').split('\n'), (p.b||'').split('\n'))
@@ -4376,9 +4444,10 @@ async function _autoRunAnalyze(mk, host, model) {
   }).join('\n\n');
 
   const _arLang = getLang();
+  const _arTableRules = mk === 'uarch' ? UARCH_TABLE_RULES + '\n' : '';
   const prompt = `${_arLang.impactExpert}
 
-Analyze the following ${label} diff and extract ONLY the changes directly relevant to ${_arLang.fileDesc} implementation.
+${_arTableRules}Analyze the following ${label} diff and extract ONLY the changes directly relevant to ${_arLang.fileDesc} implementation.
 
 ${label} Diff:
 ${diffItems}
@@ -4399,7 +4468,7 @@ Respond in JSON only (no markdown):
 }
 
 Rules:
-- Assign a UNIQUE sequential ID using prefix ${idPrefix} (e.g., ${idPrefix}-001). No duplicates. Already used: [${existingIds}]
+- Assign a UNIQUE sequential ID using prefix ${idPrefix} starting from ${idPrefix}-001. Do NOT continue from previous IDs — always start fresh from 001
 - Only include changes requiring ${_arLang.fileDesc} code modification
 - Do NOT infer target_modules or port_impact — ${_arLang.fileDesc} files not loaded at this stage
 - "affected" must list signal/port/parameter names only
