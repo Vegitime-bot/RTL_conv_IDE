@@ -3516,6 +3516,11 @@ Rules:
 - Output the COMPLETE modified file(s) — one per selected file
 - Each changed line: add comment // ITER: <brief reason>
 - If a change is related to a previous impact ID (ALGO-xxx or ARCH-xxx), preserve that ID in the IDS field
+- Preserve the original code EXACTLY — structure, indentation, whitespace, naming, and comments — unless a change point explicitly requires modification
+- Do NOT refactor, reorganize, reorder, or rename anything not listed in the change points
+- Do NOT remove or alter existing comments; only ADD the required inline markers (// ALGO: / // UARCH: / // BOTH:)
+- Do NOT change coding style, spacing conventions, or formatting of unmodified lines
+- If a change is unavoidable in adjacent lines for correctness (e.g. port list alignment), keep it minimal and note it in CHANGES
 - Output format:
     ===FILE: <filename>===
     <complete modified ${_iLang.fileDesc}>
@@ -4928,6 +4933,11 @@ Rules:
 - Apply ALL listed change points to every relevant file
 - Each changed/added line: add ONE comment // ALGO: / // UARCH: / // BOTH: <reason>
 - Maintain correct port/interface connections across modules
+- Preserve the original code EXACTLY — structure, indentation, whitespace, naming, and comments — unless a change point explicitly requires modification
+- Do NOT refactor, reorganize, reorder, or rename anything not listed in the change points
+- Do NOT remove or alter existing comments; only ADD the required inline markers (// ALGO: / // UARCH: / // BOTH:)
+- Do NOT change coding style, spacing conventions, or formatting of unmodified lines
+- If a change is unavoidable in adjacent lines for correctness (e.g. port list alignment), keep it minimal and note it in CHANGES
 - Output format for each file:
     ===FILE: <filename>===
     <complete modified ${getLang().fileDesc} code>
@@ -5026,6 +5036,11 @@ Rules:
 - Apply ALL listed change points precisely
 - Each changed/added line: add ONE inline comment — // ALGO: / // UARCH: / // BOTH: <brief reason>
 - Output ONLY the complete modified ${lang.fileDesc} file (no markdown, no backticks)
+- Preserve the original code EXACTLY — structure, indentation, whitespace, naming, and comments — unless a change point explicitly requires modification
+- Do NOT refactor, reorganize, reorder, or rename anything not listed in the change points
+- Do NOT remove or alter existing comments; only ADD the required inline markers (// ALGO: / // UARCH: / // BOTH:)
+- Do NOT change coding style, spacing conventions, or formatting of unmodified lines
+- If a change is unavoidable in adjacent lines for correctness (e.g. port list alignment), keep it minimal and note it in CHANGES
 - After the code, output exactly: ===CHANGES===
 - Then list each change: SOURCE|TYPE|IDS|description
   (SOURCE=ALGO/UARCH/BOTH, TYPE=ADD/MOD/REMOVE,
