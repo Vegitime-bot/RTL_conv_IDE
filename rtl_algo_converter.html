@@ -66,7 +66,7 @@ header{border-bottom:1px solid var(--border);padding:10px 18px;display:flex;alig
 .file-input{display:none;}
 
 /* Textarea */
-textarea{flex:1;font-family:var(--mono);font-size:12px;line-height:1.7;background:var(--bg);color:var(--text);border:none;outline:none;resize:none;padding:10px 14px;overflow:auto;}
+textarea{flex:1;font-family:var(--mono);font-size:12px;line-height:1.7;background:var(--bg);color:var(--text);border:none;outline:none;resize:none;padding:10px 14px;overflow:auto;font-feature-settings:"liga" 0,"calt" 0;font-variant-ligatures:none;}
 textarea::placeholder{color:var(--text3);}
 
 /* Diff view */
@@ -76,7 +76,7 @@ textarea::placeholder{color:var(--text3);}
 .dtab:hover{color:var(--text2);}
 .dtab.active{color:var(--accent);border-bottom-color:var(--accent);}
 .diff-block{flex:1;font-family:var(--mono);font-size:13px;line-height:1.75;background:var(--bg);overflow:auto;padding:10px 0;}
-.dl{padding:2px 14px;display:flex;gap:7px;white-space:pre;border-left:3px solid transparent;transition:background .3s,border-color .3s;}
+.dl{padding:2px 14px;display:flex;gap:7px;white-space:pre;border-left:3px solid transparent;transition:background .3s,border-color .3s;font-feature-settings:"liga" 0,"calt" 0;font-variant-ligatures:none;}
 .dl.add{background:rgba(78,232,158,.1);color:#4ee89e;}
 .dl.rem{background:rgba(255,125,135,.1);color:#ff7d87;}
 .dl.sam{color:var(--text2);}
@@ -115,7 +115,7 @@ textarea::placeholder{color:var(--text3);}
 .rtab.active{color:var(--accent);border-bottom-color:var(--accent);}
 .rtab.ok{color:var(--green);}.rtab.ok.active{border-bottom-color:var(--green);}
 .rtab.er{color:var(--red);}
-.result-area{flex:1;font-family:var(--mono);font-size:13px;line-height:1.75;background:var(--bg);color:var(--text);overflow:auto;padding:11px 14px;white-space:pre;}
+.result-area{flex:1;font-family:var(--mono);font-size:13px;line-height:1.75;background:var(--bg);color:var(--text);overflow:auto;padding:11px 14px;white-space:pre;font-feature-settings:"liga" 0,"calt" 0;font-variant-ligatures:none;}
 .hl-a{background:rgba(106,184,255,.10);display:block;}
 .hl-u{background:rgba(176,144,232,.10);display:block;}
 .hl-b{background:rgba(78,232,158,.10);display:block;}
@@ -2413,8 +2413,32 @@ async function _runBatchNow(mode = 'single') {
 const llmLog = [];
 const LOG_SERVER = 'http://localhost:3000/save-log';
 
-async function saveLlmLog(entry) {
+// REQUEST 단계 즉시 기록 (응답 여부와 무관) — fire-and-forget
+function saveReqLog(entry) {
   llmLog.push(entry);
+  // await 없이 즉시 반환 — pending 상태에서도 기록 보장
+  fetch(LOG_SERVER, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(entry),
+  }).then(res => {
+    if (res.ok) res.json().then(d =>
+      dbgLog('INF', `[req-log] #${d.count} 저장 → ${d.file}`, 'inf')
+    );
+  }).catch(() => {
+    dbgLog('INF', `[req-log] dev 서버 없음 — 메모리 누적 (${llmLog.length}건)`, 'inf');
+  });
+}
+
+// RESPONSE 완료 후 기존 REQ 항목을 업데이트해서 저장
+async function saveLlmLog(entry) {
+  // 메모리 로그에서 같은 req_id 찾아 업데이트
+  const existing = llmLog.find(e => e.req_id && e.req_id === entry.req_id);
+  if (existing) {
+    Object.assign(existing, entry);
+  } else {
+    llmLog.push(entry);
+  }
   try {
     const res = await fetch(LOG_SERVER, {
       method: 'POST',
@@ -2423,12 +2447,12 @@ async function saveLlmLog(entry) {
     });
     if (res.ok) {
       const d = await res.json();
-      dbgLog('INF', `로그 저장됨 #${d.count} → ${d.file}`, 'inf');
+      dbgLog('INF', `[res-log] #${d.count} 저장 → ${d.file}`, 'inf');
     } else {
-      dbgLog('INF', `로그 서버 응답 오류 HTTP ${res.status} — 메모리에만 누적`, 'inf');
+      dbgLog('INF', `[res-log] 서버 응답 오류 HTTP ${res.status}`, 'inf');
     }
   } catch(e) {
-    dbgLog('INF', `로그 파일 저장 불가 (dev 서버 없음) — 메모리 누적 중 (총 ${llmLog.length}건)`, 'inf');
+    dbgLog('INF', `[res-log] dev 서버 없음 — 메모리 누적 (${llmLog.length}건)`, 'inf');
   }
 }
 
@@ -2481,21 +2505,46 @@ async function callLLM(host, model, systemMsg, userMsg, onChunk, mode = 'rtl', s
   if (top_p       !== undefined) bodyObj.top_p       = top_p;
   if (seed !== undefined && seed !== -999) bodyObj.seed = seed;
 
-  // 로그 출력 — 실제 전송되는 파라미터만
+  // ── REQUEST 로그 즉시 기록 (응답 전 — pending 진단용) ──
+  const req_id   = `req-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
+  const t_req    = Date.now();
   const logParts = [`[callLLM:${mode}]`, `input:~${inputTok}tok`];
   if (temperature !== undefined) logParts.push(`temperature:${temperature}`);
   if (top_p       !== undefined) logParts.push(`top_p:${top_p}`);
   if (seed !== undefined && seed !== -999) logParts.push(`seed:${seed}`);
   if (thinkBuf > 0) logParts.push(`thinking_buf:${thinkBuf}(calc_only)`);
-  dbgLog('INF', logParts.join(' '), 'inf');
+  dbgLog('REQ', `${logParts.join(' ')}  req_id:${req_id}`, 'req');
 
+  // fetch 직전에 파일로 기록 (응답 안 와도 요청 내역 보존)
+  saveReqLog({
+    req_id,
+    status:     'REQUEST',
+    timestamp:  new Date(t_req).toISOString(),
+    endpoint,
+    model,
+    mode,
+    params: {
+      ...(temperature !== undefined && { temperature }),
+      ...(top_p       !== undefined && { top_p }),
+      ...(seed !== undefined && seed !== -999 && { seed }),
+    },
+    prompt_tokens_est: inputTok,
+    request: {
+      system: systemMsg.slice(0, 300) + (systemMsg.length > 300 ? '…' : ''),
+      user_preview: userMsg.slice(0, 500) + (userMsg.length > 500 ? '…' : ''),
+      user_tokens_est: estimateTokens(userMsg),
+    },
+  });
 
+  let t_first_byte = null;
   const res = await fetch(fetchUrl, {
     method:  'POST',
     headers,
     body:    JSON.stringify(bodyObj),
     ...(signal ? { signal } : {})
   });
+  const t_http = Date.now();
+  dbgLog('INF', `[callLLM] HTTP ${res.status} — ${t_http - t_req}ms  req_id:${req_id}`, 'inf');
 
   if (!res.ok) {
     const errText = await res.text().catch(() => '');
@@ -2539,6 +2588,10 @@ async function callLLM(host, model, systemMsg, userMsg, onChunk, mode = 'rtl', s
     const { done, value } = await reader.read();
     if (done) break;
 
+    if (!t_first_byte) {
+      t_first_byte = Date.now();
+      dbgLog('INF', `[callLLM] 첫 청크 수신 — ${t_first_byte - t_req}ms  req_id:${req_id}`, 'inf');
+    }
     buf += decoder.decode(value, { stream: true });
 
     // 완전한 라인 단위로 처리
@@ -2588,10 +2641,20 @@ async function callLLM(host, model, systemMsg, userMsg, onChunk, mode = 'rtl', s
     throw new Error('응답이 비어 있습니다 — 서버 로그 또는 콘솔을 확인하세요');
   }
 
-  // LLM 대화 로그 기록
+  // LLM 대화 로그 기록 (REQUEST 로그를 RESPONSE로 업데이트)
+  const t_done = Date.now();
+  dbgLog('RES', `[callLLM] 완료 — 전체:${t_done - t_req}ms  첫청크:${t_first_byte ? t_first_byte - t_req : '-'}ms  req_id:${req_id}`, 'res');
   await saveLlmLog({
+    req_id,
+    status:     'RESPONSE',
     timestamp:  new Date().toISOString(),
     endpoint,   model,   mode,
+    timing: {
+      req_at:         new Date(t_req).toISOString(),
+      http_ms:        t_http - t_req,
+      first_byte_ms:  t_first_byte ? t_first_byte - t_req : null,
+      total_ms:       t_done - t_req,
+    },
     params: {
       ...(temperature !== undefined && { temperature }),
       ...(top_p       !== undefined && { top_p }),

@@ -48,6 +48,16 @@ function readBody(req) {
 function appendLog(entry) {
   let arr = [];
   try { if (fs.existsSync(LOG)) arr = JSON.parse(fs.readFileSync(LOG, 'utf8')); } catch {}
+
+  // REQUEST/RESPONSE 쌍 관리: req_id 기준으로 업데이트 또는 추가
+  if (entry.req_id && entry.status === 'RESPONSE') {
+    const idx = arr.findIndex(e => e.req_id === entry.req_id);
+    if (idx >= 0) {
+      arr[idx] = { ...arr[idx], ...entry };  // REQUEST 항목을 RESPONSE로 업데이트
+      fs.writeFileSync(LOG, JSON.stringify(arr, null, 2), 'utf8');
+      return arr.length;
+    }
+  }
   arr.push(entry);
   fs.writeFileSync(LOG, JSON.stringify(arr, null, 2), 'utf8');
   return arr.length;
@@ -239,7 +249,15 @@ const server = http.createServer(async (req, res) => {
     try {
       const entry = JSON.parse((await readBody(req)).toString('utf8'));
       const count = appendLog(entry);
-      console.log(`[log] #${count} → ${LOG}`);
+      const tag   = entry.status === 'REQUEST'  ? '→ REQ ' :
+                    entry.status === 'RESPONSE' ? '← RES ' : '○ LOG ';
+      const info  = entry.req_id
+        ? `req_id:${entry.req_id}  model:${entry.model||'?'}  mode:${entry.mode||'?'}`
+        : `model:${entry.model||'?'}  mode:${entry.mode||'?'}`;
+      console.log(`[log] ${tag} #${count}  ${info}`);
+      if (entry.timing) {
+        console.log(`       http:${entry.timing.http_ms}ms  first_byte:${entry.timing.first_byte_ms}ms  total:${entry.timing.total_ms}ms`);
+      }
       res.writeHead(200, {'Content-Type': 'application/json'});
       res.end(JSON.stringify({ok: true, count, file: LOG}));
     } catch(e) {
