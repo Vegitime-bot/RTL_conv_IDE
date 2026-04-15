@@ -76,7 +76,7 @@ textarea::placeholder{color:var(--text3);}
 .dtab:hover{color:var(--text2);}
 .dtab.active{color:var(--accent);border-bottom-color:var(--accent);}
 .diff-block{flex:1;font-family:var(--mono);font-size:13px;line-height:1.75;background:var(--bg);overflow:auto;padding:10px 0;}
-.dl{padding:2px 14px;display:flex;gap:7px;white-space:pre;}
+.dl{padding:2px 14px;display:flex;gap:7px;white-space:pre;border-left:3px solid transparent;transition:background .3s,border-color .3s;}
 .dl.add{background:rgba(78,232,158,.1);color:#4ee89e;}
 .dl.rem{background:rgba(255,125,135,.1);color:#ff7d87;}
 .dl.sam{color:var(--text2);}
@@ -88,7 +88,9 @@ textarea::placeholder{color:var(--text3);}
 .scard{background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden;display:flex;flex-direction:column;}
 .sch{padding:8px 12px;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:12px;font-weight:500;letter-spacing:.06em;text-transform:uppercase;display:flex;align-items:center;gap:6px;flex-shrink:0;}
 .scb{padding:10px 12px;display:flex;flex-direction:column;gap:5px;overflow-y:auto;max-height:220px;}
-.si{display:flex;gap:6px;align-items:flex-start;font-size:12px;}
+.si{display:flex;gap:6px;align-items:flex-start;font-size:12px;
+  border-left:3px solid transparent;padding-left:6px;
+  transition:background .3s,border-color .3s,outline .3s;}
 .si p{color:var(--text2);line-height:1.5;}
 .no-ch{font-family:var(--mono);font-size:11px;color:var(--text3);}
 
@@ -286,6 +288,25 @@ textarea::placeholder{color:var(--text3);}
 .mon-step.err .mon-icon{color:var(--red);}
 @keyframes spin{to{transform:rotate(360deg)}}
 .spin{display:inline-block;animation:spin .8s linear infinite;}
+@keyframes hl-pulse{
+  0%  {opacity:1}
+  50% {opacity:.55}
+  100%{opacity:1}
+}
+/* Impact 패널 항목 하이라이트 */
+.impact-item-nav-hl {
+  background: rgba(79,158,255,.18) !important;
+  border-left: 3px solid var(--accent) !important;
+  border-radius: 5px;
+  outline: 1.5px solid var(--accent) !important;
+  animation: hl-pulse 1.4s ease-in-out 3;
+}
+/* Diff 라인 하이라이트 */
+.diff-id-hl {
+  background: rgba(245,184,64,.22) !important;
+  border-left: 3px solid var(--amber) !important;
+  animation: hl-pulse 1.4s ease-in-out 3;
+}
 .empty .ic{font-size:22px;margin-bottom:3px;opacity:.35;}
 .empty p{font-family:var(--mono);font-size:11px;}
 @keyframes spin{to{transform:rotate(360deg);}}
@@ -301,65 +322,23 @@ textarea::placeholder{color:var(--text3);}
 </header>
 
 <div class="stepbar">
-  <button class="sb active" id="s0" onclick="goStep(0)"><span class="sn">1</span>RTL Files</button>
-  <button class="sb" id="s1" onclick="goStep(1)"><span class="sn">2</span>Algorithm</button>
-  <button class="sb" id="s2" onclick="goStep(2)"><span class="sn">3</span>Algo Diff</button>
-  <button class="sb" id="s3" onclick="goStep(3)"><span class="sn">4</span>μArch Docs</button>
-  <button class="sb" id="s4" onclick="goStep(4)"><span class="sn">5</span>μArch Diff</button>
-  <button class="sb" id="s5" onclick="goStep(5)"><span class="sn">6</span>Summary</button>
-  <button class="sb" id="s6" onclick="goStep(6)"><span class="sn">7</span>Results</button>
+  <button class="sb active" id="s0" onclick="goStep(0)"><span class="sn">1</span>입력</button>
+  <button class="sb" id="s1" onclick="goStep(1)"><span class="sn">2</span>Algo Diff</button>
+  <button class="sb" id="s2" onclick="goStep(2)"><span class="sn">3</span>μArch Diff</button>
+  <button class="sb" id="s3" onclick="goStep(3)"><span class="sn">4</span>Summary</button>
+  <button class="sb" id="s4" onclick="goStep(4)"><span class="sn">5</span>Results</button>
 </div>
 
 <div class="main">
 
-  <!-- Step 0: Algorithm — card mapping -->
-  <div class="view" id="view0">
-    <!-- Upload row -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid var(--border);flex-shrink:0;">
-      <div style="padding:8px 12px;border-right:1px solid var(--border);">
-        <div class="ph" style="padding:0 0 6px;border:none;">
-          <div class="pt"><div class="dot a"></div>AS-IS 알고리즘</div>
-          <button class="btn-g btn" style="font-size:12px;padding:4px 10px;" onclick="triggerFile('aiIn')">+ 파일</button>
-          <input type="file" id="aiIn" class="file-input" accept=".py,.txt,.md" multiple>
-        </div>
-        <div class="dz" id="dzAI" style="margin:0;">
-          <p>📄 <span class="hi">클릭</span>하거나 드래그 &nbsp;·&nbsp; .py .txt .md</p>
-        </div>
-        <textarea id="aiText" placeholder="파일 없을 시 직접 입력" style="height:60px;border-top:1px solid var(--border);margin-top:6px;border-radius:4px;"></textarea>
-      </div>
-      <div style="padding:8px 12px;">
-        <div class="ph" style="padding:0 0 6px;border:none;">
-          <div class="pt"><div class="dot g"></div>TO-BE 알고리즘</div>
-          <button class="btn-g btn" style="font-size:12px;padding:4px 10px;" onclick="triggerFile('atIn')">+ 파일</button>
-          <input type="file" id="atIn" class="file-input" accept=".py,.txt,.md" multiple>
-        </div>
-        <div class="dz" id="dzAT" style="margin:0;">
-          <p>📄 <span class="hi">클릭</span>하거나 드래그 &nbsp;·&nbsp; .py .txt .md</p>
-        </div>
-        <textarea id="atText" placeholder="파일 없을 시 직접 입력" style="height:60px;border-top:1px solid var(--border);margin-top:6px;border-radius:4px;"></textarea>
-      </div>
-    </div>
-    <!-- Card mapping area -->
-    <div style="flex:1;overflow:hidden;display:flex;flex-direction:column;">
-      <div style="padding:6px 14px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0;">
-        <span style="font-family:var(--mono);font-size:10px;color:var(--text3);">AS-IS 카드를 클릭 → TO-BE 카드 클릭으로 연결 &nbsp;·&nbsp; 연결선 클릭 시 삭제</span>
-        <button class="btn-g btn" style="font-size:12px;padding:4px 12px;" onclick="autoMap('algo')">자동 매핑</button>
-      </div>
-      <div style="flex:1;position:relative;overflow:hidden;" id="algoMapArea">
-        <svg style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;" id="algoSvg"></svg>
-        <div style="position:absolute;top:0;left:0;width:50%;height:100%;overflow-y:auto;padding:12px 8px 12px 14px;" id="aiCards"></div>
-        <div style="position:absolute;top:0;right:0;width:50%;height:100%;overflow-y:auto;padding:12px 14px 12px 8px;" id="atCards"></div>
-      </div>
-    </div>
-  </div>
-
+  <div class="view" id="view0"></div>
   <!-- Step 1: Algo Diff (per-file tabs) -->
   <div class="view" id="view1">
     <div id="algoDiffGrid" style="display:grid;grid-template-columns:1fr 5px 340px;flex:1;overflow:hidden;position:relative;">
       <!-- 좌: LCS diff -->
       <div class="diff-wrap" style="border-right:none;overflow:hidden;">
         <div class="diff-tabs" id="adTabs"></div>
-        <div class="diff-block" id="adBlock"><div class="empty"><div class="ic">⊘</div><p>Step 1에서 파일을 추가하세요</p></div></div>
+        <div class="diff-block" id="adBlock"><div class="empty"><div class="ic">⊘</div><p>입력 탭에서 Algorithm 문서를 추가하세요</p></div></div>
         <div class="diff-footer" id="adFoot"></div>
       </div>
       <!-- 드래그 핸들 -->
@@ -399,52 +378,14 @@ textarea::placeholder{color:var(--text3);}
     </div>
   </div>
 
-  <!-- Step 2: μArch docs — card mapping -->
-  <div class="view" id="view2">
-    <div style="display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid var(--border);flex-shrink:0;">
-      <div style="padding:8px 12px;border-right:1px solid var(--border);">
-        <div class="ph" style="padding:0 0 6px;border:none;">
-          <div class="pt"><div class="dot a"></div>AS-IS μArch 문서</div>
-          <button class="btn-g btn" style="font-size:12px;padding:4px 10px;" onclick="triggerFile('uaIn')">+ 파일</button>
-          <input type="file" id="uaIn" class="file-input" accept=".md,.txt" multiple>
-        </div>
-        <div class="dz" id="dzUA" style="margin:0;">
-          <p>📄 <span class="hi">클릭</span>하거나 드래그 &nbsp;·&nbsp; .md .txt</p>
-        </div>
-        <textarea id="uaText" placeholder="파일 없을 시 직접 입력" style="height:60px;border-top:1px solid var(--border);margin-top:6px;border-radius:4px;"></textarea>
-      </div>
-      <div style="padding:8px 12px;">
-        <div class="ph" style="padding:0 0 6px;border:none;">
-          <div class="pt"><div class="dot p"></div>TO-BE μArch 문서</div>
-          <button class="btn-g btn" style="font-size:12px;padding:4px 10px;" onclick="triggerFile('utIn')">+ 파일</button>
-          <input type="file" id="utIn" class="file-input" accept=".md,.txt" multiple>
-        </div>
-        <div class="dz" id="dzUT" style="margin:0;">
-          <p>📄 <span class="hi">클릭</span>하거나 드래그 &nbsp;·&nbsp; .md .txt</p>
-        </div>
-        <textarea id="utText" placeholder="파일 없을 시 직접 입력" style="height:60px;border-top:1px solid var(--border);margin-top:6px;border-radius:4px;"></textarea>
-      </div>
-    </div>
-    <div style="flex:1;overflow:hidden;display:flex;flex-direction:column;">
-      <div style="padding:6px 14px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0;">
-        <span style="font-family:var(--mono);font-size:10px;color:var(--text3);">AS-IS 카드를 클릭 → TO-BE 카드 클릭으로 연결 &nbsp;·&nbsp; 연결선 클릭 시 삭제</span>
-        <button class="btn-g btn" style="font-size:12px;padding:4px 12px;" onclick="autoMap('uarch')">자동 매핑</button>
-      </div>
-      <div style="flex:1;position:relative;overflow:hidden;" id="uarchMapArea">
-        <svg style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;" id="uarchSvg"></svg>
-        <div style="position:absolute;top:0;left:0;width:50%;height:100%;overflow-y:auto;padding:12px 8px 12px 14px;" id="uaCards"></div>
-        <div style="position:absolute;top:0;right:0;width:50%;height:100%;overflow-y:auto;padding:12px 14px 12px 8px;" id="utCards"></div>
-      </div>
-    </div>
-  </div>
-
+  <div class="view" id="view2"></div>
   <!-- Step 3: μArch Diff (per-file tabs) -->
   <div class="view" id="view3">
     <div id="uarchDiffGrid" style="display:grid;grid-template-columns:1fr 5px 340px;flex:1;overflow:hidden;position:relative;">
       <!-- 좌: LCS diff -->
       <div class="diff-wrap" style="border-right:none;overflow:hidden;">
         <div class="diff-tabs" id="udTabs"></div>
-        <div class="diff-block" id="udBlock"><div class="empty"><div class="ic">⊘</div><p>Step 3에서 파일을 추가하세요</p></div></div>
+        <div class="diff-block" id="udBlock"><div class="empty"><div class="ic">⊘</div><p>입력 탭에서 μArch 문서를 추가하세요</p></div></div>
         <div class="diff-footer" id="udFoot"></div>
       </div>
       <!-- 드래그 핸들 -->
@@ -544,50 +485,163 @@ textarea::placeholder{color:var(--text3);}
     </div>
   </div>
 
-  <!-- Step 5: RTL Files -->
-  <div class="view active" id="view5">
-    <div class="dz" id="dzRTL" style="margin:8px;">
-      <p>📂 <span class="hi">클릭</span>하거나 <span id="dzFileHint">.v / .sv</span> 파일 드래그</p>
-      <p class="sub">여러 파일 동시 선택 가능</p>
-    </div>
-    <input type="file" id="rtlIn" class="file-input" accept=".v,.sv,.verilog" multiple>
+  <!-- Step 5 (cur=0): 통합 입력 탭 -->
+  <div class="view active" id="view5" style="flex-direction:column;overflow-y:auto;">
 
-    <!-- 출력 언어 선택 -->
-    <div style="padding:8px 14px;display:flex;align-items:center;gap:10px;flex-shrink:0;border-bottom:1px solid var(--border);background:var(--surface);">
-      <span style="font-family:var(--mono);font-size:11px;color:var(--text2);font-weight:500;">출력 언어</span>
-      <label style="display:flex;align-items:center;gap:5px;cursor:pointer;">
-        <input type="radio" name="outputLang" value="rtl" checked
-          style="accent-color:var(--accent);" onchange="setOutputLang('rtl')">
-        <span style="font-family:var(--mono);font-size:12px;color:var(--text);">Verilog / SystemVerilog</span>
-      </label>
-      <label style="display:flex;align-items:center;gap:5px;cursor:pointer;">
-        <input type="radio" name="outputLang" value="systemc"
-          style="accent-color:var(--purple);" onchange="setOutputLang('systemc')">
-        <span style="font-family:var(--mono);font-size:12px;color:var(--text);">SystemC (HLS)</span>
-      </label>
-      <span id="langModeHint" style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-left:4px;">
-        — .v / .sv 파일 · RTL 레벨 변환
-      </span>
-    </div>
-    <div style="padding:4px 13px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
-      <div style="display:flex;flex-direction:column;gap:2px;">
-        <span style="font-family:var(--mono);font-size:12px;color:var(--text3);" id="rtlCnt">파일 없음</span>
-        <span style="font-family:var(--mono);font-size:10px;" id="depGraphBadge"></span>
+    <!-- ── 섹션 헤더 공통 스타일 정의 ── -->
+
+    <!-- ① 출력 언어 + RTL 파일 ─────────────────────────── -->
+    <div style="border-bottom:2px solid var(--border);flex-shrink:0;">
+      <div style="padding:7px 14px;background:var(--s2);display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);">
+        <div class="dot b"></div>
+        <span style="font-family:var(--mono);font-size:12px;font-weight:600;color:var(--text);">RTL / SystemC 파일</span>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:10px;">
+          <span style="font-family:var(--mono);font-size:11px;color:var(--text2);font-weight:500;">출력 언어</span>
+          <label style="display:flex;align-items:center;gap:5px;cursor:pointer;">
+            <input type="radio" name="outputLang" value="rtl" checked
+              style="accent-color:var(--accent);" onchange="setOutputLang('rtl')">
+            <span style="font-family:var(--mono);font-size:11px;color:var(--text);">Verilog / SV</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:5px;cursor:pointer;">
+            <input type="radio" name="outputLang" value="systemc"
+              style="accent-color:var(--purple);" onchange="setOutputLang('systemc')">
+            <span style="font-family:var(--mono);font-size:11px;color:var(--text);">SystemC (HLS)</span>
+          </label>
+          <span id="langModeHint" style="font-family:var(--mono);font-size:10px;color:var(--text3);">— .v / .sv 파일</span>
+        </div>
       </div>
-      <button class="btn-g btn" style="font-size:12px;padding:4px 11px;" onclick="rtlFiles=[];_depGraph=null;renderRtl();renderDepGraphBadge()">전체 삭제</button>
+      <div style="display:flex;align-items:stretch;min-height:100px;">
+        <div style="flex:1;padding:8px 12px;display:flex;flex-direction:column;gap:6px;">
+          <div class="dz" id="dzRTL" style="margin:0;flex:1;min-height:70px;">
+            <p>📂 <span class="hi">클릭</span>하거나 <span id="dzFileHint">.v / .sv</span> 드래그</p>
+          </div>
+          <input type="file" id="rtlIn" class="file-input" accept=".v,.sv,.verilog" multiple>
+        </div>
+        <div style="flex:1;padding:4px 12px 4px 0;display:flex;flex-direction:column;gap:4px;justify-content:center;">
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <span style="font-family:var(--mono);font-size:11px;color:var(--text3);" id="rtlCnt">파일 없음</span>
+            <span style="font-family:var(--mono);font-size:10px;color:var(--green);" id="depGraphBadge"></span>
+            <button class="btn-g btn" style="font-size:11px;padding:3px 9px;" onclick="rtlFiles=[];_depGraph=null;renderRtl();renderDepGraphBadge()">전체 삭제</button>
+          </div>
+          <div class="file-list" id="rtlList" style="max-height:120px;overflow-y:auto;"></div>
+        </div>
+      </div>
     </div>
-    <div class="file-list" id="rtlList"></div>
 
-    <!-- 컨텍스트 제어 옵션 -->
+    <!-- ② Algorithm 문서 + 매핑 ──────────────────────────── -->
+    <div style="border-bottom:2px solid var(--border);flex-shrink:0;">
+      <div style="padding:7px 14px;background:var(--s2);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;">
+        <div class="dot a"></div>
+        <span style="font-family:var(--mono);font-size:12px;font-weight:600;color:var(--text);">Algorithm 문서</span>
+        <span style="font-family:var(--mono);font-size:10px;color:var(--text3);">.py · .txt · .md</span>
+        <button class="btn-g btn" style="font-size:11px;padding:3px 10px;margin-left:auto;" onclick="autoMap('algo')">자동 매핑</button>
+      </div>
+      <!-- 파일 입력 -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid var(--border);">
+        <div style="padding:8px 12px;border-right:1px solid var(--border);">
+          <div class="ph" style="padding:0 0 5px;border:none;">
+            <div class="pt"><div class="dot a"></div>AS-IS 알고리즘</div>
+            <button class="btn-g btn" style="font-size:11px;padding:3px 8px;" onclick="triggerFile('aiIn')">+ 파일</button>
+            <input type="file" id="aiIn" class="file-input" accept=".py,.txt,.md" multiple>
+          </div>
+          <div class="dz" id="dzAI" style="margin:0;min-height:55px;">
+            <p style="font-size:12px;">📄 <span class="hi">클릭</span>하거나 드래그</p>
+          </div>
+          <textarea id="aiText" placeholder="파일 없을 시 직접 입력" style="height:50px;border-top:1px solid var(--border);margin-top:5px;border-radius:4px;"></textarea>
+        </div>
+        <div style="padding:8px 12px;">
+          <div class="ph" style="padding:0 0 5px;border:none;">
+            <div class="pt"><div class="dot g"></div>TO-BE 알고리즘</div>
+            <button class="btn-g btn" style="font-size:11px;padding:3px 8px;" onclick="triggerFile('atIn')">+ 파일</button>
+            <input type="file" id="atIn" class="file-input" accept=".py,.txt,.md" multiple>
+          </div>
+          <div class="dz" id="dzAT" style="margin:0;min-height:55px;">
+            <p style="font-size:12px;">📄 <span class="hi">클릭</span>하거나 드래그</p>
+          </div>
+          <textarea id="atText" placeholder="파일 없을 시 직접 입력" style="height:50px;border-top:1px solid var(--border);margin-top:5px;border-radius:4px;"></textarea>
+        </div>
+      </div>
+      <!-- 매핑 영역 -->
+      <div style="padding:3px 14px;background:var(--bg);border-bottom:1px solid var(--border);
+        font-family:var(--mono);font-size:10px;color:var(--text3);">
+        AS-IS 카드 → TO-BE 카드 클릭으로 연결 &nbsp;·&nbsp; 연결선 클릭 시 삭제
+      </div>
+      <div style="position:relative;overflow:hidden;height:200px;" id="algoMapArea">
+        <svg style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;" id="algoSvg"></svg>
+        <div style="position:absolute;top:0;left:0;width:50%;height:100%;overflow-y:auto;padding:10px 6px 10px 12px;" id="aiCards"></div>
+        <div style="position:absolute;top:0;right:0;width:50%;height:100%;overflow-y:auto;padding:10px 12px 10px 6px;" id="atCards"></div>
+      </div>
+    </div>
+
+    <!-- ③ μArch 문서 + 매핑 ─────────────────────────────── -->
+    <div style="border-bottom:2px solid var(--border);flex-shrink:0;">
+      <div style="padding:7px 14px;background:var(--s2);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;">
+        <div class="dot p"></div>
+        <span style="font-family:var(--mono);font-size:12px;font-weight:600;color:var(--text);">μArch 문서</span>
+        <span style="font-family:var(--mono);font-size:10px;color:var(--text3);">.md · .txt</span>
+        <button class="btn-g btn" style="font-size:11px;padding:3px 10px;margin-left:auto;" onclick="autoMap('uarch')">자동 매핑</button>
+      </div>
+      <!-- 파일 입력 -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid var(--border);">
+        <div style="padding:8px 12px;border-right:1px solid var(--border);">
+          <div class="ph" style="padding:0 0 5px;border:none;">
+            <div class="pt"><div class="dot a"></div>AS-IS μArch 문서</div>
+            <button class="btn-g btn" style="font-size:11px;padding:3px 8px;" onclick="triggerFile('uaIn')">+ 파일</button>
+            <input type="file" id="uaIn" class="file-input" accept=".md,.txt" multiple>
+          </div>
+          <div class="dz" id="dzUA" style="margin:0;min-height:55px;">
+            <p style="font-size:12px;">📄 <span class="hi">클릭</span>하거나 드래그</p>
+          </div>
+          <textarea id="uaText" placeholder="파일 없을 시 직접 입력" style="height:50px;border-top:1px solid var(--border);margin-top:5px;border-radius:4px;"></textarea>
+        </div>
+        <div style="padding:8px 12px;">
+          <div class="ph" style="padding:0 0 5px;border:none;">
+            <div class="pt"><div class="dot p"></div>TO-BE μArch 문서</div>
+            <button class="btn-g btn" style="font-size:11px;padding:3px 8px;" onclick="triggerFile('utIn')">+ 파일</button>
+            <input type="file" id="utIn" class="file-input" accept=".md,.txt" multiple>
+          </div>
+          <div class="dz" id="dzUT" style="margin:0;min-height:55px;">
+            <p style="font-size:12px;">📄 <span class="hi">클릭</span>하거나 드래그</p>
+          </div>
+          <textarea id="utText" placeholder="파일 없을 시 직접 입력" style="height:50px;border-top:1px solid var(--border);margin-top:5px;border-radius:4px;"></textarea>
+        </div>
+      </div>
+      <!-- 매핑 영역 -->
+      <div style="padding:3px 14px;background:var(--bg);border-bottom:1px solid var(--border);
+        font-family:var(--mono);font-size:10px;color:var(--text3);">
+        AS-IS 카드 → TO-BE 카드 클릭으로 연결 &nbsp;·&nbsp; 연결선 클릭 시 삭제
+      </div>
+      <div style="position:relative;overflow:hidden;height:200px;" id="uarchMapArea">
+        <svg style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;" id="uarchSvg"></svg>
+        <div style="position:absolute;top:0;left:0;width:50%;height:100%;overflow-y:auto;padding:10px 6px 10px 12px;" id="uaCards"></div>
+        <div style="position:absolute;top:0;right:0;width:50%;height:100%;overflow-y:auto;padding:10px 12px 10px 6px;" id="utCards"></div>
+      </div>
+    </div>
+
+    <!-- ④ 컨텍스트 제어 옵션 -->
     <div style="border-top:1px solid var(--border);padding:10px 14px;flex-shrink:0;background:var(--surface);">
       <div style="font-family:var(--mono);font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">컨텍스트 옵션</div>
       <div style="display:flex;flex-direction:column;gap:8px;">
 
-        <!-- new μArch 전문 포함 (기본 ON) -->
+        <!-- TO-BE μArch 전문 포함 (기본 ON) -->
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
           <input type="checkbox" id="includeNewUarch" checked style="accent-color:var(--accent);">
           <span style="font-family:var(--mono);font-size:10px;color:var(--text2);">TO-BE μArch 전문 포함</span>
           <span style="font-family:var(--mono);font-size:10px;color:var(--text3);">— Phase 2 섹션 외에 new μArch 원문 전체를 추가 전달 (토큰 증가)</span>
+        </label>
+
+        <!-- 사전 검토 (기본 ON) -->
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+          <input type="checkbox" id="preClarifyOpt" checked style="accent-color:var(--purple);">
+          <span style="font-family:var(--mono);font-size:10px;color:var(--text2);">사전 검토</span>
+          <span style="font-family:var(--mono);font-size:10px;color:var(--text3);">— 변환 전 LLM이 불명확한 점을 질문 후 진행 (질문 없으면 자동 통과)</span>
+        </label>
+
+        <!-- Lint 검증 (기본 ON) -->
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+          <input type="checkbox" id="lintOpt" checked style="accent-color:var(--green);">
+          <span style="font-family:var(--mono);font-size:10px;color:var(--text2);">Lint 검증</span>
+          <span style="font-family:var(--mono);font-size:10px;color:var(--text3);">— 변환 후 자동 lint · 오류 시 LLM 자동 수정 재시도 (dev 서버 필요)</span>
         </label>
 
         <!-- 순차 처리 시 자동 적용 안내 -->
@@ -735,6 +789,44 @@ textarea::placeholder{color:var(--text3);}
   </div>
   <div id="autoRunSteps" style="display:flex;flex-direction:column;gap:4px;"></div>
   <div id="autoRunStatus" style="font-family:var(--mono);font-size:11px;color:var(--text3);margin-top:8px;"></div>
+</div>
+
+<!-- 사전 검토 Q&A 모달 -->
+<div id="preClarifyModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.65);align-items:center;justify-content:center;">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;
+    width:min(600px,94vw);max-height:80vh;display:flex;flex-direction:column;
+    box-shadow:0 20px 60px rgba(0,0,0,.5);overflow:hidden;">
+
+    <!-- 헤더 -->
+    <div style="padding:12px 18px;border-bottom:1px solid var(--border);background:var(--s2);
+      display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span style="font-size:16px;">💬</span>
+        <span style="font-family:var(--mono);font-size:13px;font-weight:600;color:var(--text);">사전 검토 — LLM 질문</span>
+      </div>
+      <span style="font-family:var(--mono);font-size:11px;color:var(--text3);" id="preClarifyStatus"></span>
+    </div>
+
+    <!-- 안내 -->
+    <div style="padding:8px 18px;background:rgba(176,144,232,.07);border-bottom:1px solid var(--border);
+      font-family:var(--mono);font-size:11px;color:var(--text2);line-height:1.6;flex-shrink:0;">
+      LLM이 변환 컨텍스트를 검토하고 불명확한 점을 질문했습니다.<br>
+      답변 후 변환을 진행하거나, 건너뛰고 바로 변환할 수 있습니다.
+    </div>
+
+    <!-- 질문 목록 -->
+    <div id="preClarifyQList" style="flex:1;overflow-y:auto;padding:14px 18px;
+      display:flex;flex-direction:column;gap:14px;min-height:0;"></div>
+
+    <!-- 하단 버튼 -->
+    <div style="padding:10px 18px;border-top:1px solid var(--border);background:var(--s2);
+      display:flex;gap:8px;justify-content:flex-end;flex-shrink:0;">
+      <button class="btn btn-g" style="font-size:11px;padding:5px 14px;"
+        onclick="preClarifySkip()">건너뛰고 변환</button>
+      <button class="btn btn-p" style="font-size:11px;padding:5px 16px;background:var(--purple);border-color:var(--purple);"
+        onclick="preClarifyProceed()">✓ 답변 완료 → 변환</button>
+    </div>
+  </div>
 </div>
 
 <!-- 토큰 초과 경고 모달 -->
@@ -885,11 +977,11 @@ let rtlFiles=[]; // [{name,content,status,result,changes}]
 let resActive=0;
 let dbgOpen=false,dbgCnt=0;
 
-const LABELS=['다음: Algorithm →','다음: Algo Diff →','다음: μArch 문서 →','다음: μArch Diff →','다음: Summary →','▶ RTL 변환','▶ 재변환'];
+const LABELS=['다음: Algo Diff →','다음: μArch Diff →','다음: Summary →','▶ RTL 변환','▶ 재변환'];
 
 // ── Navigation ───────────────────────────────────────────
 // 스텝 순서: RTL(5) → Algorithm(0) → AlgoDiff(1) → μArchDocs(2) → μArchDiff(3) → Summary(4) → Results(6)
-const STEP_VIEW=[5,0,1,2,3,4,6];
+const STEP_VIEW=[5,1,3,4,6];  // cur: 0=입력+매핑, 1=AlgoDiff, 2=μArchDiff, 3=Summary, 4=Results
 
 function goStep(n){
   cur=n;
@@ -906,22 +998,27 @@ function goStep(n){
   nb.textContent=LABELS[Math.min(n,LABELS.length-1)];
   try { refreshAutoParams(); } catch(e) { console.warn(e); }
   // Summary 단계 진입 시 항상 갱신
-  if (n === 5) { try { buildSummary(); } catch(e) { console.warn(e); } }
+  if (n === 3) { try { buildSummary(); } catch(e) { console.warn(e); } }
+  // 매핑 탭 진입 시 카드 상태 표시
+
 }
 function prevStep(){if(cur>0)goStep(cur-1);}
 function nextAction(){
-  if(cur===0)goStep(1);
-  else if(cur===1){buildAlgoDiffs();goStep(2);}
-  else if(cur===2)goStep(3);
-  else if(cur===3){buildUarchDiffs();goStep(4);}
-  else if(cur===4){buildSummary();goStep(5);}
-  else if(cur===5){                              // Summary → RTL 변환
+  if(cur===0){                                   // 입력+매핑 → Algo Diff
+    const hasAlgo  = getText('ai') || getText('at');
+    const hasUarch = getText('ua') || getText('ut');
+    if (!hasAlgo && !hasUarch) { alert('Algorithm 또는 μArch 문서를 먼저 입력하세요.'); return; }
+    buildAlgoDiffs(); goStep(1);
+  }
+  else if(cur===1){ buildUarchDiffs(); goStep(2); }  // Algo Diff → μArch Diff
+  else if(cur===2){ buildSummary(); goStep(3); }     // μArch Diff → Summary
+  else if(cur===3){                              // Summary → RTL 변환
     if (!_summaryAnalysisDone) {
       if (!confirm('분석을 실행하지 않았습니다. 그래도 변환을 진행할까요?')) return;
     }
-    runBatch();   // runBatch → checkTokensAndRun → _runBatchNow
+    runBatch();
   }
-  else if(cur===6){                              // Results → 재변환 확인
+  else if(cur===4){                              // Results → 재변환 확인
     const hasResult = rtlFiles.some(f => f.result);
     if (hasResult) {
       document.getElementById('rerunConfirmModal').style.display = 'flex';
@@ -2129,7 +2226,7 @@ function updateCtxEstimate() {
     rawRequired = (usedTok + 300) * 1.5 + calc.thinkingBuf;
     modeTag     = `<span style="color:var(--amber);font-size:10px;">[Algo Diff]</span>`;
     baseLabel   = `AS(${calc.algoAsTok.toLocaleString()}) + TO(${calc.algoToTok.toLocaleString()}) = ~${calc.algoDocTok.toLocaleString()} tok`;
-  } else if (cur === 4 && calc.uarchDocTok > 0) {
+  } else if (cur === 2 && calc.uarchDocTok > 0) {
     usedTok     = calc.uarchDocTok;
     rawRequired = (usedTok + 300) * 1.5 + calc.thinkingBuf;
     modeTag     = `<span style="color:var(--purple);font-size:10px;">[μArch Diff]</span>`;
@@ -2156,12 +2253,12 @@ function updateCtxEstimate() {
     : '';
 
   // Algo/μArch Diff 단계에서 RTL 변환 참고
-  const rtlHint = (cur === 2 || cur === 4) && rtlFiles.length
+  const rtlHint = (cur === 1 || cur === 2) && rtlFiles.length
     ? `<br><span style="font-size:10px;color:var(--text3);">RTL 변환 시 전체합산: ~${calc.sumFileTok.toLocaleString()} tok</span>`
     : '';
 
   // RTL 단계에서 전체 변환 예상 토큰 표시
-  const totalConvHint = (cur !== 2 && cur !== 4) && rtlFiles.length
+  const totalConvHint = (cur !== 1 && cur !== 2) && rtlFiles.length
     ? (() => {
         const tc    = calcTotalConvTokens();
         const over  = tc.total >= TOKEN_WARN_THRESHOLD;
@@ -2181,7 +2278,7 @@ function updateCtxEstimate() {
   el.innerHTML = `${modeTag} ${baseLabel}${thinkingHint}${uarchFullHint}${reqLabel}${rtlHint}${totalConvHint}`;
 
   // 청크 분할 예고 (RTL 단계)
-  if (cur !== 2 && cur !== 4 && rtlFiles.length) {
+  if (cur !== 1 && cur !== 2 && rtlFiles.length) {
     const budget     = getTokenBudget();
     const splitFiles = rtlFiles.filter(f => estimateTokens(f.content) > budget * 0.7);
     if (splitFiles.length > 0)
@@ -2258,8 +2355,9 @@ async function runBatch() {
 function impactWarnGoAnalyze() {
   document.getElementById('impactWarnModal').style.display = 'none';
   // 미분석 탭으로 이동
+  // 분석 탭으로 이동 (Algo Diff = cur 1, μArch Diff = cur 2)
   if (!_impactData.algo?.items?.length && (getText('ai') || getText('at'))) goStep(1);
-  else if (!_impactData.uarch?.items?.length && (getText('ua') || getText('ut'))) goStep(3);
+  else if (!_impactData.uarch?.items?.length && (getText('ua') || getText('ut'))) goStep(2);
 }
 
 function impactWarnProceed() {
@@ -2294,7 +2392,7 @@ async function _runBatchNow(mode = 'single') {
       dbgLog('INF', `[batch] Phase 1 기반 ${excN}개 파일 제외: ${rtlFiles.filter(f=>f._p1Excluded).map(f=>f.name).join(', ')}`, 'inf');
   }
 
-  goStep(6); renderResTabs();
+  goStep(4); renderResTabs();
   _batchAborted = false;
   hideResumeBtn();
   logImpactUsage();
@@ -2561,11 +2659,10 @@ function checkTokensAndRun() {
 
   const calc = calcTotalConvTokens();
   if (calc.total < TOKEN_WARN_THRESHOLD || isLargeCxtModel()) {
-    // 정상 범위 또는 대형 컨텍스트 모델 → 단일로 바로 실행
     if (calc.total >= TOKEN_WARN_THRESHOLD) {
       dbgLog('INF', `[ctx] ${getSelectedModel()} — largeCxtModel 등록됨, ${calc.total.toLocaleString()} tok 단일 실행`, 'inf');
     }
-    _runBatchNow('single');
+    checkTokensAndRunWithClarify('single');  // ← 사전 검토 경유
     return;
   }
 
@@ -2590,12 +2687,174 @@ function checkTokensAndRun() {
 
 function tokenWarnSequential() {
   document.getElementById('tokenWarnModal').style.display = 'none';
-  _runBatchNow('sequential');
+  checkTokensAndRunWithClarify('sequential');
 }
 
 function tokenWarnProceed() {
   document.getElementById('tokenWarnModal').style.display = 'none';
-  _runBatchNow('single');
+  checkTokensAndRunWithClarify('single');
+}
+
+// ════════════════════════════════════════════════════════
+// 사전 검토 (Pre-Clarification) 시스템
+// ════════════════════════════════════════════════════════
+let _preClarifyAnswers  = [];   // 사용자 답변 목록
+let _preClarifyPending  = null; // 대기 중인 _runBatchNow 파라미터
+
+function isPreClarifyOn() {
+  return document.getElementById('preClarifyOpt')?.checked ?? true;
+}
+function isLintOn() {
+  return document.getElementById('lintOpt')?.checked ?? true;
+}
+
+// checkTokensAndRun 대신 여기서 사전 검토 여부를 결정
+async function checkTokensAndRunWithClarify(mode) {
+  if (!isPreClarifyOn()) {
+    // 옵션 OFF → 기존 흐름
+    _runBatchNow(mode);
+    return;
+  }
+
+  // 사전 검토 실행
+  const host  = (document.getElementById('oHost').value || '').replace(/\/+$/, '');
+  const model = getSelectedModel();
+  if (!host || !model) { _runBatchNow(mode); return; }
+
+  _preClarifyAnswers = [];
+  _preClarifyPending = mode;
+
+  const modal  = document.getElementById('preClarifyModal');
+  const status = document.getElementById('preClarifyStatus');
+  const qList  = document.getElementById('preClarifyQList');
+
+  modal.style.display = 'flex';
+  status.textContent  = '질문 생성 중…';
+  qList.innerHTML     = '<div style="font-family:var(--mono);font-size:12px;color:var(--amber);padding:8px 0;">'
+                      + '<span class="spin" style="display:inline-block;animation:spin .8s linear infinite;margin-right:6px;">◌</span>'
+                      + 'LLM이 컨텍스트를 검토 중입니다…</div>';
+
+  try {
+    const questions = await _runPreClarifyLLM(host, model);
+
+    if (!questions.length) {
+      // 질문 없음 → 모달 닫고 바로 변환
+      modal.style.display = 'none';
+      status.textContent  = '';
+      dbgLog('INF', '[pre-clarify] 불명확한 점 없음 — 바로 변환', 'inf');
+      _runBatchNow(_preClarifyPending);
+      return;
+    }
+
+    // 질문 렌더링
+    status.textContent = `${questions.length}개 질문`;
+    qList.innerHTML = questions.map((q, i) => `
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        <div style="display:flex;align-items:flex-start;gap:8px;">
+          <span style="font-family:var(--mono);font-size:11px;color:var(--purple);font-weight:600;flex-shrink:0;">Q${i+1}.</span>
+          <span style="font-family:var(--mono);font-size:12px;color:var(--text);line-height:1.6;">${esc(q.question)}</span>
+        </div>
+        ${q.context ? `<div style="font-family:var(--mono);font-size:10px;color:var(--text3);padding:4px 8px;background:var(--s2);border-radius:4px;border-left:2px solid var(--b2);">
+          관련: ${esc(q.context)}</div>` : ''}
+        <textarea id="pca-${i}" rows="2"
+          placeholder="답변을 입력하세요 (생략 가능)"
+          style="font-family:var(--mono);font-size:11px;background:var(--bg);border:1px solid var(--accent);
+            color:var(--text);padding:6px 10px;border-radius:5px;outline:none;resize:vertical;
+            width:100%;box-sizing:border-box;"></textarea>
+      </div>`).join('<hr style="border:none;border-top:1px solid var(--border);margin:2px 0;">');
+
+    // answers 배열 크기 맞춤
+    _preClarifyAnswers = questions.map(() => '');
+
+  } catch(e) {
+    dbgLog('ERR', `[pre-clarify] ${e.message}`, 'err');
+    modal.style.display = 'none';
+    dbgLog('INF', '[pre-clarify] 오류 → 바로 변환 진행', 'inf');
+    _runBatchNow(_preClarifyPending);
+  }
+}
+
+async function _runPreClarifyLLM(host, model) {
+  const lang = getLang();
+  const ctx  = buildContextSection();
+  const sigs = rtlFiles.map(f => extractSignature(f.content, f.name)).join('\n\n');
+
+  const prompt = `${lang.expert}
+
+You are about to convert the following ${lang.fileDesc} files based on the given change points.
+Before conversion, identify any AMBIGUOUS or UNCLEAR points that could lead to incorrect or inconsistent results.
+
+Only ask about things that:
+- Have multiple valid interpretations that would produce different ${lang.fileDesc} code
+- Are missing critical information needed for correct port/signal mapping
+- Could cause interface inconsistencies across modules
+
+Do NOT ask about things that are clearly specified or that you can reasonably infer.
+If everything is clear, return an empty questions array.
+
+=== Change Context ===
+${ctx}
+
+=== ${lang.fileDesc} File Signatures ===
+${sigs}
+
+Respond in JSON only (no markdown):
+{
+  "questions": [
+    {
+      "question": "specific question about an ambiguous point",
+      "context": "which file/signal/port this relates to",
+      "impact": "what could go wrong if assumed incorrectly"
+    }
+  ]
+}
+
+Return at most 5 questions. If nothing is ambiguous, return { "questions": [] }`;
+
+  let raw = '';
+  await callLLM(host, model,
+    `${lang.expert} Identify ambiguities before code conversion. Respond only in valid JSON.`,
+    prompt, p => { raw = p; }, 'json');
+
+  const m = raw.match(/\{[\s\S]*\}/);
+  if (!m) return [];
+  const result = JSON.parse(m[0]);
+  dbgLog('INF', `[pre-clarify] LLM 질문 ${result.questions?.length ?? 0}개 생성`, 'inf');
+  return result.questions || [];
+}
+
+function preClarifyProceed() {
+  // textarea에서 답변 수집
+  const qList  = document.getElementById('preClarifyQList');
+  const inputs = qList.querySelectorAll('textarea');
+  _preClarifyAnswers = [...inputs].map(t => t.value.trim());
+
+  const answered = _preClarifyAnswers.filter(a => a).length;
+  dbgLog('INF', `[pre-clarify] 답변 ${answered}/${inputs.length}개 수집 → 변환 진행`, 'inf');
+
+  document.getElementById('preClarifyModal').style.display = 'none';
+  _runBatchNow(_preClarifyPending);
+}
+
+function preClarifySkip() {
+  _preClarifyAnswers = [];
+  document.getElementById('preClarifyModal').style.display = 'none';
+  dbgLog('INF', '[pre-clarify] 건너뜀 → 바로 변환', 'inf');
+  _runBatchNow(_preClarifyPending);
+}
+
+// 사전 검토 답변을 buildContextSection 결과에 추가하는 래퍼
+function buildContextSectionWithClarify() {
+  const base = buildContextSection();
+  if (!_preClarifyAnswers.length || !_preClarifyAnswers.some(a => a)) return base;
+
+  const qaBlock = '=== Pre-Conversion Clarifications (Engineer\'s Answers) ===\n'
+    + _preClarifyAnswers
+        .map((a, i) => a ? `Q${i+1}: ${a}` : null)
+        .filter(Boolean)
+        .join('\n');
+
+  return base + '\n\n' + qaBlock;
 }
 
 // ════════════════════════════════════════════════════════
@@ -4031,7 +4290,7 @@ function updateImpactCnt(mk) {
 
 // ── 렌더링 (수정·삭제 버튼 포함) ─────────────────────────
 function _refreshSummaryIfOpen() {
-  if (cur === 5) { try { buildSummary(); } catch(e) {} }
+  if (cur === 3) { try { buildSummary(); } catch(e) {} }
 }
 
 function renderImpactPanel(el, result, label) {
@@ -4537,10 +4796,15 @@ async function _autoRunConvert() {
       dbgLog('INF', `[auto-run] 토큰 ${calc.total.toLocaleString()} ≥ 128K → 순차 처리 자동 선택`, 'inf');
       autoRunSetStatus(`RTL 변환 중… (순차 처리 자동 선택, ~${calc.total.toLocaleString()} tok)`, 'var(--amber)');
     }
-    // _runBatchNow는 async이지만 goStep(6) 등 UI 전환 포함
-    // Promise로 감싸서 완료 대기
-    goStep(6);
-    _runBatchNow(mode).then(resolve).catch(reject);
+    if (isPreClarifyOn())
+      autoRunSetStatus('사전 검토 중… 질문에 답변 후 변환이 재개됩니다', 'var(--purple)');
+    goStep(4);
+    // 사전 검토 포함 — 모달 Q&A 후 _runBatchNow가 내부에서 실행됨
+    checkTokensAndRunWithClarify(mode);
+    // resolve는 _runBatchNow 완료 후 — 일괄 실행 모니터는 _runBatchNow 내 monUpdate로 표시
+    // Promise 완료 시점을 맞추기 위해 _runBatchNow를 직접 감지하기보다
+    // autoRunConvert는 fire-and-forget으로 처리 (auto-run 파이프라인이 convert step을 마지막에 수행하므로)
+    resolve();
   });
 }
 
@@ -4554,17 +4818,21 @@ function navigateToImpactId(id) {
   if (!mk) return;
 
   // 해당 Diff 스텝으로 이동 (Algo Diff=cur 2, μArch Diff=cur 4)
-  const stepIdx = mk === 'algo' ? 2 : 4;
+  // cur 1 = AlgoDiff, cur 2 = μArchDiff
+  const stepIdx = mk === 'algo' ? 1 : 2;
   goStep(stepIdx);
 
-  // 잠깐 대기 후 항목 하이라이트 (DOM 렌더링 완료 후)
-  requestAnimationFrame(() => {
-    highlightImpactItem(mk, id);
-    highlightDiffById(mk, id);
-  });
+  // 렌더링 완료 후 하이라이트 (rAF 두 번 + setTimeout으로 안정적으로 대기)
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    setTimeout(() => {
+      highlightImpactItem(mk, id);
+      highlightDiffById(mk, id);
+    }, 80);
+  }));
 }
 
 // Impact 패널에서 해당 ID 항목 하이라이트
+let _hlImpactTimer = null;
 function highlightImpactItem(mk, id) {
   const items = _impactData[mk]?.items || [];
   const idx   = items.findIndex(it => it.id === id);
@@ -4573,26 +4841,25 @@ function highlightImpactItem(mk, id) {
   const el = document.getElementById(`impact-item-${mk}-${idx}`);
   if (!el) return;
 
-  // 기존 하이라이트 제거
+  // 기존 하이라이트 해제
+  clearTimeout(_hlImpactTimer);
   document.querySelectorAll('.impact-item-nav-hl').forEach(e => {
     e.classList.remove('impact-item-nav-hl');
-    e.style.outline = '';
   });
 
   // 하이라이트 + 스크롤
-  el.style.outline = '2px solid var(--accent)';
   el.classList.add('impact-item-nav-hl');
-  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
-  // 2초 후 해제
-  setTimeout(() => {
-    el.style.outline = '';
+  // 애니메이션(1.4s × 3회 = 4.2s) 완료 후 자동 해제
+  _hlImpactTimer = setTimeout(() => {
     el.classList.remove('impact-item-nav-hl');
-  }, 2500);
+  }, 4400);
 }
 
 // Diff LCS 블록에서 해당 ID가 관련된 라인 하이라이트
 // → impact item의 affected 신호/포트명을 diff 라인에서 검색
+let _hlDiffTimer = null;
 function highlightDiffById(mk, id) {
   const blockId = mk === 'algo' ? 'adBlock' : 'udBlock';
   const block   = document.getElementById(blockId);
@@ -4602,29 +4869,29 @@ function highlightDiffById(mk, id) {
   const item  = items.find(it => it.id === id);
   if (!item) return;
 
-  // 검색 키워드: affected 신호/포트명 + rtl_impact에서 추출
+  // 검색 키워드: affected 신호/포트명 + change/rtl_impact에서 추출
   const keywords = [
     ...(item.affected || []),
-    // rtl_impact에서 식별자처럼 보이는 단어 추출 (camelCase, snake_case)
-    ...(item.rtl_impact?.match(/[a-zA-Z_][a-zA-Z0-9_]{2,}/g) || []).slice(0, 5),
+    ...(item.rtl_impact?.match(/[a-zA-Z_][a-zA-Z0-9_]{2,}/g) || []).slice(0, 8),
+    ...(item.change?.match(/[a-zA-Z_][a-zA-Z0-9_]{2,}/g) || []).slice(0, 4),
   ].filter(Boolean).map(k => k.trim().toLowerCase());
 
-  if (!keywords.length) return;
+  const unique = [...new Set(keywords)];
+  if (!unique.length) return;
 
   // 기존 하이라이트 해제
-  block.querySelectorAll('.diff-id-hl').forEach(e => {
-    e.classList.remove('diff-id-hl');
-    e.style.boxShadow = '';
-  });
+  clearTimeout(_hlDiffTimer);
+  block.querySelectorAll('.diff-id-hl').forEach(e => e.classList.remove('diff-id-hl'));
 
   let firstMatch = null;
+  let matchCount = 0;
   block.querySelectorAll('.dl').forEach(line => {
     const text = line.textContent.toLowerCase();
-    const hit  = keywords.some(kw => kw.length > 2 && text.includes(kw));
+    const hit  = unique.some(kw => kw.length > 2 && text.includes(kw));
     if (hit) {
-      line.style.boxShadow = 'inset 3px 0 0 var(--accent)';
       line.classList.add('diff-id-hl');
       if (!firstMatch) firstMatch = line;
+      matchCount++;
     }
   });
 
@@ -4632,13 +4899,123 @@ function highlightDiffById(mk, id) {
     firstMatch.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
-  // 3초 후 해제
-  setTimeout(() => {
-    block.querySelectorAll('.diff-id-hl').forEach(e => {
-      e.classList.remove('diff-id-hl');
-      e.style.boxShadow = '';
+  dbgLog('INF', `[hl-diff] ${id}: ${matchCount}개 라인 하이라이트 (키워드: ${unique.slice(0,5).join(', ')})`, 'inf');
+
+  // 애니메이션(1.4s × 3회 = 4.2s) 완료 후 자동 해제
+  _hlDiffTimer = setTimeout(() => {
+    block.querySelectorAll('.diff-id-hl').forEach(e => e.classList.remove('diff-id-hl'));
+  }, 4400);
+}
+
+// ════════════════════════════════════════════════════════
+// LSP / Lint 검증 (생성 후 자동 실행)
+// ════════════════════════════════════════════════════════
+const LINT_MAX_RETRY = 2;
+
+// 단일 파일 lint 실행 → { ok, errors, warnings, raw, linter, note }
+async function lintFile(code, filename) {
+  const host = (document.getElementById('oHost').value || '').replace(/\/+$/, '');
+  // dev 서버는 항상 localhost:3000 — LLM host와 별개
+  const lintUrl = 'http://localhost:3000/lint';
+  const lang = getLang().extractSig === 'systemc' ? 'systemc' : 'rtl';
+
+  try {
+    const res = await fetch(lintUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code, filename, lang }),
     });
-  }, 3000);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (e) {
+    // dev 서버 미실행 또는 연결 불가 → lint 건너뜀
+    dbgLog('INF', `[lint] 서버 연결 불가 — 건너뜀 (${e.message})`, 'inf');
+    return { ok: true, errors: [], warnings: [], note: `lint 서버 연결 불가: ${e.message}` };
+  }
+}
+
+// lint 오류를 LLM에 전달해서 자동 수정 요청
+async function autoFixLint(f, lintResult, host, model, attempt) {
+  const lang = getLang();
+  const errorBlock = lintResult.errors.slice(0, 20)
+    .map(e => `Line ${e.line}: ${e.msg}`)
+    .join('\n');
+
+  const fixPrompt = `${lang.expert}
+
+The following ${lang.fileDesc} code has syntax/port errors detected by ${lintResult.linter}.
+Fix ONLY the reported errors. Do not change anything else.
+
+=== Lint Errors ===
+${errorBlock}
+
+=== Current ${lang.fileDesc} Code (${f.name}) ===
+${f.result}
+
+=== Original ${lang.fileDesc} Code (before conversion) ===
+${f.content}
+
+Rules:
+- Fix ONLY the listed lint errors
+- Preserve the original code structure and style exactly
+- Output ONLY the complete fixed ${lang.fileDesc} file (no markdown, no backticks)
+- After the code, output: ===CHANGES===
+- List each fix: LINT|FIX|NONE|<error description fixed>`;
+
+  dbgLog('REQ', `[lint-fix] ${f.name} 시도 ${attempt}/${LINT_MAX_RETRY}  errors=${lintResult.errors.length}`, 'req');
+
+  try {
+    let raw = '';
+    await callLLM(host, model, `${lang.expert} Fix lint errors precisely.`,
+      fixPrompt, p => { raw = p; }, 'rtl');
+
+    const parsed = parseResult(raw, f.name);
+    if (parsed.result && parsed.result.trim()) {
+      f.result  = parsed.result;
+      f.changes = [...f.changes, ...parsed.changes];
+    }
+  } catch (e) {
+    dbgLog('ERR', `[lint-fix] ${e.message}`, 'err');
+  }
+}
+
+// 파일 하나에 대한 lint + 자동 재시도 전체 흐름
+async function lintAndFix(f, host, model, stepId) {
+  f.lintResult = null;
+
+  monUpdateDetail(stepId, `lint 검사 중…`);
+
+  let lintResult = await lintFile(f.result, f.name);
+  f.lintResult = lintResult;
+
+  if (lintResult.note) {
+    dbgLog('INF', `[lint] ${f.name}: ${lintResult.note}`, 'inf');
+    return;  // lint 불가 → 그냥 통과
+  }
+
+  dbgLog('INF',
+    `[lint] ${f.name}: ${lintResult.errors.length}개 오류, ${lintResult.warnings.length}개 경고 (${lintResult.linter})`,
+    lintResult.ok ? 'inf' : 'err');
+
+  // 오류가 있으면 자동 수정 재시도
+  for (let attempt = 1; attempt <= LINT_MAX_RETRY && !lintResult.ok; attempt++) {
+    monUpdateDetail(stepId,
+      `lint 오류 ${lintResult.errors.length}개 — 자동 수정 시도 ${attempt}/${LINT_MAX_RETRY}…`);
+
+    await autoFixLint(f, lintResult, host, model, attempt);
+
+    // 재lint
+    lintResult = await lintFile(f.result, f.name);
+    f.lintResult = lintResult;
+
+    dbgLog('INF',
+      `[lint-fix] ${f.name} 시도${attempt} 결과: 오류 ${lintResult.errors.length}개`,
+      lintResult.ok ? 'inf' : 'err');
+  }
+
+  if (!lintResult.ok) {
+    dbgLog('ERR', `[lint] ${f.name}: 자동 수정 후에도 오류 ${lintResult.errors.length}개 남음`, 'err');
+  }
 }
 
 function _syncResultHandles() {
@@ -4875,7 +5252,19 @@ async function runSequential(ctx, startIdx = 0) {
     f.changes = chunkChanges;
     f.status  = chunkResults.some(r => r.startsWith('// 오류')) ? 'err' : 'ok';
 
-    monUpdateStep(fileStepId, '✓', 'done', `완료`);
+    // ── lint + 자동 수정 (옵션 ON 시) ─────────────────────
+    if (f.status === 'ok' && isLintOn()) {
+      monUpdateStep(fileStepId, '<span class="spin">◌</span>', 'active', 'lint 검사 중…');
+      await lintAndFix(f, host, model, fileStepId);
+      if (f.lintResult && !f.lintResult.ok)
+        f.status = 'lint-warn';
+    }
+
+    monUpdateStep(fileStepId, f.status === 'lint-warn' ? '⚠' : '✓',
+                  f.status === 'lint-warn' ? 'err' : 'done',
+                  f.status === 'lint-warn'
+                    ? `완료 (lint 오류 ${f.lintResult.errors.length}개 남음)`
+                    : `완료`);
     renderRtl(); renderResTabs(); showRes(idx);
     setStatus('lo', `순차 처리 — ${idx+1}/${rtlFiles.length}`);
   }
@@ -4914,7 +5303,7 @@ async function runSingleContext(ctx) {
   // 제외 파일은 단일 컨텍스트에서도 제외
   const activeFiles = rtlFiles.filter(f => !f._p1Excluded);
   const allRtl      = activeFiles.map(f => `=== ${getLang().fileDesc} File: ${f.name} ===\n${f.content}`).join('\n\n');
-  const ctxSection  = buildContextSection();   // impact 데이터만
+  const ctxSection  = buildContextSectionWithClarify();   // impact + 사전 검토 답변
   const totalTokens = Math.round(allRtl.length / 3.5);
   const algoN  = _impactData.algo?.items?.length  || 0;
   const uarchN = _impactData.uarch?.items?.length || 0;
@@ -5000,6 +5389,20 @@ ${allRtl}`;
     const ok2 = rtlFiles.filter(f => f.status === 'ok').length;
     monUpdateStep('s-parse', '✓', 'done', `${ok2}/${rtlFiles.length}개 파일 파싱 완료`);
 
+    // ── 파일별 lint + 자동 수정 (옵션 ON 시) ──────────────
+    const lintTargets = rtlFiles.filter(f => f.status === 'ok');
+    if (lintTargets.length && isLintOn()) {
+      monAddStep('s-lint', '<span class="spin">◌</span>', 'Lint 검사',
+        `${lintTargets.length}개 파일 검사 중…`, 'active');
+      for (const f of lintTargets) {
+        await lintAndFix(f, host, model, 's-lint');
+        if (f.lintResult && !f.lintResult.ok) f.status = 'lint-warn';
+      }
+      const lintErrs = lintTargets.filter(f => f.status === 'lint-warn').length;
+      monUpdateStep('s-lint', lintErrs ? '⚠' : '✓', lintErrs ? 'err' : 'done',
+        lintErrs ? `${lintErrs}개 파일 lint 오류 남음` : '모든 파일 lint 통과');
+    }
+
   } catch(e) {
     dbgLog('ERR', `단일 컨텍스트 오류: ${e.message}`, 'err');
     monUpdateStep('s-llm',   '✕', 'err', e.message);
@@ -5023,7 +5426,7 @@ ${allRtl}`;
 }
 
 function buildPrompt(rtl, fname) {
-  const ctxSection = buildContextSection();
+  const ctxSection = buildContextSectionWithClarify();
   const lang = getLang();
   return `${lang.expert}
 
@@ -5106,8 +5509,15 @@ function showRes(idx){
   wrap.innerHTML=`
     ${verTabs}
     <div class="ph" style="flex-shrink:0;">
-      <div class="pt"><div class="dot ${f.status==='ok'?'g':''}" style="${f.status==='err'?'background:var(--red)':''}"></div>${esc(f.name)}
+      <div class="pt">
+        <div class="dot ${f.status==='ok'||f.status==='lint-warn'?'g':''}" style="${f.status==='err'?'background:var(--red)':''}"></div>
+        ${esc(f.name)}
         ${f.history?.length ? `<span style="font-family:var(--mono);font-size:12px;color:var(--amber);margin-left:6px;">${f.history.length}회 개선됨</span>` : ''}
+        ${f.lintResult && !f.lintResult.note ? (
+          f.lintResult.ok
+            ? `<span style="font-family:var(--mono);font-size:10px;padding:1px 6px;border-radius:3px;background:rgba(78,232,158,.15);color:var(--green);margin-left:6px;">✓ lint</span>`
+            : `<span style="font-family:var(--mono);font-size:10px;padding:1px 6px;border-radius:3px;background:rgba(255,107,117,.15);color:var(--red);margin-left:6px;">⚠ lint ${f.lintResult.errors.length}개 오류</span>`
+        ) : ''}
       </div>
       <div style="display:flex;align-items:center;gap:8px;">
         <div class="legend">
@@ -5133,7 +5543,20 @@ function showRes(idx){
         <div style="padding:6px 10px;border-bottom:1px solid var(--border);flex-shrink:0;font-family:var(--mono);font-size:11px;font-weight:500;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;">
           변경 요약 <span style="color:var(--text3);font-weight:400;">(${f.changes.length}건)</span>
         </div>
-        <div style="flex:1;overflow-y:auto;padding:8px 10px;display:flex;flex-direction:column;gap:6px;">${chHtml}</div>
+        <div style="flex:1;overflow-y:auto;padding:8px 10px;display:flex;flex-direction:column;gap:6px;">
+          ${f.lintResult && !f.lintResult.note && (f.lintResult.errors.length || f.lintResult.warnings.length) ? `
+          <div style="border-radius:5px;border:1px solid ${f.lintResult.ok ? 'rgba(78,232,158,.3)' : 'rgba(255,107,117,.3)'};overflow:hidden;margin-bottom:4px;">
+            <div style="padding:5px 8px;background:${f.lintResult.ok ? 'rgba(78,232,158,.08)' : 'rgba(255,107,117,.08)'};font-family:var(--mono);font-size:10px;font-weight:600;color:${f.lintResult.ok ? 'var(--green)' : 'var(--red)'};">
+              ${f.lintResult.linter} — ${f.lintResult.ok ? '✓ 통과' : `오류 ${f.lintResult.errors.length}개`}${f.lintResult.warnings.length ? ` / 경고 ${f.lintResult.warnings.length}개` : ''}
+            </div>
+            ${[...f.lintResult.errors.map(e => ({...e, type:'err'})), ...f.lintResult.warnings.map(e => ({...e, type:'warn'}))]
+              .slice(0, 20).map(e => `
+              <div style="padding:3px 8px;border-top:1px solid var(--border);font-family:var(--mono);font-size:10px;color:${e.type==='err'?'var(--red)':'var(--amber)'};">
+                L${e.line}: ${esc(e.msg)}
+              </div>`).join('')}
+          </div>` : ''}
+          ${chHtml}
+        </div>
       </div>` : ''}
     </div>`;
 

@@ -155,6 +155,85 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+
+  // ── /lint: verible(RTL) 또는 clangd(SystemC) 로 문법/포트 검사 ──
+  if (req.method === 'POST' && pathname === '/lint') {
+    const { execFile } = require('child_process');
+    const os   = require('os');
+    const body = JSON.parse((await readBody(req)).toString('utf8'));
+    const { code, filename, lang } = body;  // lang: 'rtl' | 'systemc'
+
+    // 임시 파일 작성
+    const ext     = lang === 'systemc' ? '.cpp' : (filename?.endsWith('.sv') ? '.sv' : '.v');
+    const tmpFile = path.join(os.tmpdir(), `rtl_lint_${Date.now()}${ext}`);
+    fs.writeFileSync(tmpFile, code, 'utf8');
+
+    const cleanup = () => { try { fs.unlinkSync(tmpFile); } catch {} };
+
+    // 사용 가능한 linter 탐색
+    const { execSync } = require('child_process');
+    function which(cmd) {
+      try { execSync(`which ${cmd}`, {stdio:'ignore'}); return true; } catch { return false; }
+    }
+
+    let linter, args;
+    if (lang === 'systemc') {
+      // clangd 기반 간이 체크 (clang --syntax-only)
+      if (which('clang++')) {
+        linter = 'clang++';
+        args   = ['--syntax-only', '-std=c++17', '-I/usr/include/systemc', tmpFile];
+      } else {
+        cleanup();
+        res.writeHead(200, {'Content-Type':'application/json'});
+        res.end(JSON.stringify({ ok: true, errors: [], warnings: [],
+          note: 'clang++ 미설치 — lint 건너뜀' }));
+        return;
+      }
+    } else {
+      // Verilog/SV: verible 우선, 없으면 iverilog
+      if (which('verible-verilog-syntax')) {
+        linter = 'verible-verilog-syntax';
+        args   = ['--error_on_unimplemented', tmpFile];
+      } else if (which('iverilog')) {
+        linter = 'iverilog';
+        args   = ['-t', 'null', '-Wall', tmpFile];
+      } else {
+        cleanup();
+        res.writeHead(200, {'Content-Type':'application/json'});
+        res.end(JSON.stringify({ ok: true, errors: [], warnings: [],
+          note: 'verible/iverilog 미설치 — lint 건너뜀' }));
+        return;
+      }
+    }
+
+    execFile(linter, args, { timeout: 15000 }, (err, stdout, stderr) => {
+      cleanup();
+      const output = (stderr || stdout || '').trim();
+      console.log(`[lint] ${linter} → exit=${err?.code ?? 0}  output=${output.slice(0,120)}`);
+
+      // 오류 파싱: "file:line:col: error: msg" 형태
+      const errors   = [];
+      const warnings = [];
+      const lineRe   = /(?:.*?):(\d+):(\d+)?:?\s*(error|warning|note):\s*(.+)/gi;
+      let m;
+      while ((m = lineRe.exec(output)) !== null) {
+        const item = { line: parseInt(m[1]), col: parseInt(m[2]||'0'), msg: m[4].trim() };
+        if (m[3].toLowerCase() === 'error') errors.push(item);
+        else if (m[3].toLowerCase() === 'warning') warnings.push(item);
+      }
+      // verible는 다른 포맷일 수 있으므로 raw도 포함
+      res.writeHead(200, {'Content-Type':'application/json'});
+      res.end(JSON.stringify({
+        ok:       errors.length === 0,
+        errors,
+        warnings,
+        raw:      output,
+        linter,
+      }));
+    });
+    return;
+  }
+
   // 로그 저장
   if (req.method === 'POST' && pathname === '/save-log') {
     try {
@@ -203,6 +282,7 @@ server.listen(PORT, () => {
   console.log(`  앱         : http://localhost:${PORT}`);
   console.log(`  환경설정   : http://localhost:${PORT}/env  (.env 파일 읽기)`);
   console.log(`  POST 프록시: http://localhost:${PORT}/llm-proxy  (X-Target-URL 헤더)`);
+  console.log(`  Lint 검사  : http://localhost:${PORT}/lint  (verible/iverilog/clang++ 필요)`);
   console.log(`  GET  프록시: http://localhost:${PORT}/get-proxy   (X-Target-URL 헤더)`);
   console.log(`  로그파일   : ${LOG}`);
   console.log(`  .env 파일  : ${fs.existsSync(ENV) ? ENV : '(없음 — .env 생성 권장)'}`);
