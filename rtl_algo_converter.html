@@ -661,7 +661,8 @@ textarea::placeholder{color:var(--text3);}
         <span style="font-family:var(--mono);font-size:11px;color:var(--text2);font-weight:500;">진행 상황</span>
         <span id="monStatus" style="font-family:var(--mono);font-size:11px;color:var(--amber);"></span>
         <span id="monTokens" style="font-family:var(--mono);font-size:10px;color:var(--text3);"></span>
-        <div style="margin-left:auto;display:flex;gap:6px;">
+        <div style="margin-left:auto;display:flex;gap:6px;align-items:center;">
+          <button id="dlAllBtn"  class="btn-g btn" style="font-size:10px;padding:4px 13px;display:none;" onclick="dlAllRes()" title="완료된 파일 전체 다운로드 (ZIP)">↓ 전체 다운로드</button>
           <button id="resumeBtn" class="btn-g btn" style="font-size:10px;padding:4px 13px;display:none;" onclick="resumeBatch()">↺ 이어서 변환</button>
           <button id="stopBtn"   class="btn-g btn" style="font-size:10px;padding:4px 13px;display:none;color:var(--red);border-color:rgba(255,107,117,.3);" onclick="stopBatch()">■ 중단</button>
         </div>
@@ -2323,6 +2324,14 @@ function showStopBtn()   { document.getElementById('stopBtn').style.display = ''
 function hideStopBtn()   { document.getElementById('stopBtn').style.display = 'none'; }
 function showResumeBtn() { document.getElementById('resumeBtn').style.display = ''; }
 function hideResumeBtn() { document.getElementById('resumeBtn').style.display = 'none'; }
+function showDlAllBtn()  {
+  const btn = document.getElementById('dlAllBtn');
+  if (!btn) return;
+  const ok = rtlFiles.filter(f => f.status === 'ok' || f.status === 'lint-warn').length;
+  if (ok > 0) btn.style.display = '';
+  btn.textContent = `↓ 전체 다운로드 (${ok}개)`;
+}
+function hideDlAllBtn()  { const b = document.getElementById('dlAllBtn'); if (b) b.style.display = 'none'; }
 
 // ── Batch convert (mode dispatcher) ──────────────────────
 async function runBatch() {
@@ -2957,10 +2966,48 @@ function _llmAbort(key) {
 }
 
 function parseResult(raw, fname) {
-  const sep = raw.indexOf('===CHANGES===');
-  const result  = (sep !== -1 ? raw.slice(0, sep) : raw).trim();
-  const changes = (sep !== -1 ? raw.slice(sep+13).trim() : '').split('\n').filter(l => l.includes('|'));
-  return { result, changes };
+  const sep     = raw.indexOf('===CHANGES===');
+  const codeRaw = (sep !== -1 ? raw.slice(0, sep) : raw).trim();
+  const changes = (sep !== -1 ? raw.slice(sep + 13).trim() : '').split('\n').filter(l => l.includes('|'));
+
+  // ── 코드 영역 정제 ───────────────────────────────────────
+  // 1. 마크다운 코드블록 제거 (```verilog ... ``` / ```systemc ... ```)
+  let code = codeRaw.replace(/^```[\w]*\n?/m, '').replace(/\n?```\s*$/m, '').trim();
+
+  // 2. 코드 앞 설명 텍스트 제거
+  //    Verilog/SV: `module` 키워드 이전 텍스트 제거
+  //    SystemC:    `#include` 또는 `SC_MODULE` 이전 텍스트 제거
+  //    공통:       `//` 주석으로 시작하는 경우는 코드로 간주
+  const verilogStart = /^(module|`timescale|`include|`define|\/\/|\/\*|parameter|localparam|package|import|interface|typedef)/m;
+  const systemcStart = /^(#include|SC_MODULE|using|namespace|\/\/|\/\*|class\s)/m;
+
+  const ext = (fname || '').split('.').pop().toLowerCase();
+  const isSC = ['cpp','h','hpp','cc'].includes(ext);
+  const startRe = isSC ? systemcStart : verilogStart;
+
+  const startMatch = code.match(startRe);
+  if (startMatch && startMatch.index > 0) {
+    const trimmed = code.slice(startMatch.index);
+    dbgLog('INF', `[parseResult] ${fname}: 앞 ${startMatch.index}자 설명 텍스트 제거됨`, 'inf');
+    code = trimmed;
+  }
+
+  // 3. 코드 뒤 설명 텍스트 제거
+  //    Verilog: endmodule 이후 텍스트 제거
+  //    SystemC: 마지막 }; 이후 텍스트 제거
+  if (!isSC) {
+    const endMatch = code.match(/^endmodule[\s\S]*/m);
+    if (endMatch) {
+      const endIdx = code.lastIndexOf('endmodule');
+      const after  = code.slice(endIdx + 'endmodule'.length).trim();
+      if (after && !/^\/\/|^`|^module/.test(after)) {
+        dbgLog('INF', `[parseResult] ${fname}: endmodule 이후 텍스트 제거됨`, 'inf');
+        code = code.slice(0, endIdx + 'endmodule'.length);
+      }
+    }
+  }
+
+  return { result: code.trim(), changes };
 }
 
 // CHANGES 라인 파싱: "SOURCE|TYPE|IDS|description" 또는 레거시 "SOURCE|TYPE|description"
@@ -4108,12 +4155,14 @@ async function reAnalyzeImpact(mk) {
       <div id="${mk}-reanalyze-preview" style="font-family:var(--mono);font-size:11px;color:var(--text3);max-height:120px;overflow:hidden;line-height:1.5;word-break:break-all;opacity:.6;"></div>
     </div>`;
 
-  const diffItems = pairsData.map(p => {
-    const lines = diffLines(
-      (p.a || '').split('\n'),
-      (p.b || '').split('\n')
-    ).filter(x => x.t !== 's').map(x => `${x.t === 'a' ? '+' : '-'} ${x.x.trim()}`);
-    return `### ${p.label}\n${lines.slice(0, 80).join('\n') || '(변경 없음)'}`;
+  // 전문(AS-IS + TO-BE) 기반 분석 — LCS diff 대신 전체 문서 전달
+  // 이유: offset 변경, 블록 재배치 등 위치 변화가 큰 경우 LCS diff 오판 방지
+  const fullDocs = pairsData.map(p => {
+    const aText = (p.a || '').trim();
+    const bText = (p.b || '').trim();
+    return `### ${p.label}\n` +
+      `--- AS-IS ---\n${aText || '(없음)'}\n\n` +
+      `--- TO-BE ---\n${bText || '(없음)'}`;
   }).join('\n\n');
 
   // 추가 지시 없으면 완전 재분석 (ID 001부터 새로 시작)
@@ -4141,11 +4190,12 @@ async function reAnalyzeImpact(mk) {
   const tableRules = mk === 'uarch' ? UARCH_TABLE_RULES + '\n' : '';
   const prompt = `${_raLang.impactExpert}
 
-${tableRules}Analyze the following ${label} diff and extract ONLY the changes directly relevant to ${_raLang.fileDesc} implementation.
+${tableRules}Compare the following AS-IS and TO-BE ${label} documents and extract ALL changes directly relevant to ${_raLang.fileDesc} implementation.
+Pay special attention to: register/field offset changes, block reordering, structural reorganization, and any semantic differences — not just line-level text changes.
 ${existingItems}${extraSection}
 
-${label} Diff:
-${diffItems}
+${label} Documents (AS-IS vs TO-BE):
+${fullDocs}
 
 Respond in JSON only (no markdown):
 {
@@ -4166,6 +4216,8 @@ Rules:
 - Assign a UNIQUE sequential ID to every item using prefix ${idPrefix} starting from ${idPrefix}-001
 - Do NOT reuse or continue from previous IDs — always start fresh from 001
 - Only include changes that require ${_raLang.fileDesc} code modification
+- Treat offset/address changes as distinct items even if surrounding text is similar
+- Treat block reordering as a change if it affects register addresses or field positions
 - Do NOT infer target_modules or port_impact — ${_raLang.fileDesc} files are not loaded at this stage
 - "affected" must list signal/port/parameter names only, never filenames
 - Be specific about ${_raLang.fileDesc} constructs (${_raLang.construct})`;
@@ -4764,20 +4816,24 @@ async function _autoRunAnalyze(mk, host, model) {
   const idPrefix = mk === 'algo' ? 'ALGO' : 'ARCH';
   const existingIds = 'none';  // 항상 001부터 새로 시작
 
-  const diffItems = pairsData.map(p => {
-    const lines = diffLines((p.a||'').split('\n'), (p.b||'').split('\n'))
-      .filter(x => x.t !== 's').map(x => `${x.t==='a'?'+':'-'} ${x.x.trim()}`);
-    return `### ${p.label}\n${lines.slice(0,80).join('\n')||'(변경 없음)'}`;
+  // 전문(AS-IS + TO-BE) 기반 분석
+  const fullDocs = pairsData.map(p => {
+    const aText = (p.a || '').trim();
+    const bText = (p.b || '').trim();
+    return `### ${p.label}\n` +
+      `--- AS-IS ---\n${aText || '(없음)'}\n\n` +
+      `--- TO-BE ---\n${bText || '(없음)'}`;
   }).join('\n\n');
 
   const _arLang = getLang();
   const _arTableRules = mk === 'uarch' ? UARCH_TABLE_RULES + '\n' : '';
   const prompt = `${_arLang.impactExpert}
 
-${_arTableRules}Analyze the following ${label} diff and extract ONLY the changes directly relevant to ${_arLang.fileDesc} implementation.
+${_arTableRules}Compare the following AS-IS and TO-BE ${label} documents and extract ALL changes directly relevant to ${_arLang.fileDesc} implementation.
+Pay special attention to: register/field offset changes, block reordering, structural reorganization, and any semantic differences — not just line-level text changes.
 
-${label} Diff:
-${diffItems}
+${label} Documents (AS-IS vs TO-BE):
+${fullDocs}
 
 Respond in JSON only (no markdown):
 {
@@ -4797,6 +4853,8 @@ Respond in JSON only (no markdown):
 Rules:
 - Assign a UNIQUE sequential ID using prefix ${idPrefix} starting from ${idPrefix}-001. Do NOT continue from previous IDs — always start fresh from 001
 - Only include changes requiring ${_arLang.fileDesc} code modification
+- Treat offset/address changes as distinct items even if surrounding text is similar
+- Treat block reordering as a change if it affects register addresses or field positions
 - Do NOT infer target_modules or port_impact — ${_arLang.fileDesc} files not loaded at this stage
 - "affected" must list signal/port/parameter names only
 - If no ${_arLang.fileDesc}-relevant changes, return empty items array`;
@@ -5171,7 +5229,7 @@ async function runSequential(ctx, startIdx = 0) {
 
   _batchAborted = false;
   monShow();
-  showStopBtn(); hideResumeBtn();
+  showStopBtn(); hideResumeBtn(); hideDlAllBtn();
 
   const totalRemain = rtlFiles.length - startIdx;
   monSetStatus(
@@ -5337,7 +5395,7 @@ async function runSequential(ctx, startIdx = 0) {
   monSetTokens('');
   hideStopBtn();
   if (ok < rtlFiles.length) showResumeBtn(); else hideResumeBtn();
-  if (ok > 0) showIterPanel();
+  if (ok > 0) { showIterPanel(); showDlAllBtn(); }
   setStatus('ok', `순차 완료 ${ok}/${rtlFiles.length}`);
   dbgLog('RES', `✓ 순차 완료 ${ok}/${rtlFiles.length}`, 'res');
   const _nb1 = document.getElementById('nextBtn');
@@ -5385,6 +5443,8 @@ Rules:
 - Apply ALL listed change points to every relevant file
 - Each changed/added line: add ONE comment // ALGO: / // UARCH: / // BOTH: <reason>
 - Maintain correct port/interface connections across modules
+- Do NOT add any explanation or commentary outside the code blocks
+- Each ===FILE: ... === block must contain ONLY valid ${getLang().fileDesc} code
 - Preserve the original code EXACTLY — structure, indentation, whitespace, naming, and comments — unless a change point explicitly requires modification
 - Do NOT refactor, reorganize, reorder, or rename anything not listed in the change points
 - Do NOT remove or alter existing comments; only ADD the required inline markers (// ALGO: / // UARCH: / // BOTH:)
@@ -5439,8 +5499,10 @@ ${allRtl}`;
       const f = rtlFiles.find(x => x.name === fname || fname.includes(x.name) || x.name.includes(fname));
       if (!f) { dbgLog('INF', `파싱: ${fname} 매칭 실패`, 'inf'); continue; }
 
-      const sepIdx = body.indexOf(`===CHANGES: ${fname}===`);
-      f.result  = (sepIdx !== -1 ? body.slice(0, sepIdx) : body).trim();
+      const sepIdx  = body.indexOf(`===CHANGES: ${fname}===`);
+      const rawCode = (sepIdx !== -1 ? body.slice(0, sepIdx) : body);
+      const parsed  = parseResult(rawCode + (sepIdx !== -1 ? '' : ''), fname);
+      f.result  = parsed.result;
       f.changes = (sepIdx !== -1 ? body.slice(sepIdx + `===CHANGES: ${fname}===`.length).trim() : '')
         .split('\n').filter(l => l.includes('|'));
       f.status  = 'ok';
@@ -5481,7 +5543,7 @@ ${allRtl}`;
   const ok = rtlFiles.filter(f=>f.status==='ok').length;
   monSetStatus(`완료 ${ok}/${rtlFiles.length}`, ok === rtlFiles.length ? 'var(--green)' : 'var(--amber)');
   if (ok < rtlFiles.length) showResumeBtn(); else hideResumeBtn();
-  if (ok > 0) showIterPanel();
+  if (ok > 0) { showIterPanel(); showDlAllBtn(); }
   setStatus('ok', `단일 완료 ${ok}/${rtlFiles.length}`);
   dbgLog('RES', `✓ 단일 완료 ${ok}/${rtlFiles.length}`, 'res');
   const _nb2 = document.getElementById('nextBtn');
@@ -5502,6 +5564,8 @@ Rules:
 - Apply ALL listed change points precisely
 - Each changed/added line: add ONE inline comment — // ALGO: / // UARCH: / // BOTH: <brief reason>
 - Output ONLY the complete modified ${lang.fileDesc} file (no markdown, no backticks)
+- Do NOT include any explanation, commentary, or notes before or after the code
+- The output must start directly with the first line of ${lang.fileDesc} code
 - Preserve the original code EXACTLY — structure, indentation, whitespace, naming, and comments — unless a change point explicitly requires modification
 - Do NOT refactor, reorganize, reorder, or rename anything not listed in the change points
 - Do NOT remove or alter existing comments; only ADD the required inline markers (// ALGO: / // UARCH: / // BOTH:)
@@ -5592,7 +5656,6 @@ function showRes(idx){
         <button class="cbtn" onclick="navigator.clipboard.writeText(document.getElementById('ra${idx}').innerText)">Copy</button>
         <button class="cbtn" onclick="enableInlineEdit(${idx})" title="직접 편집">✎ 수정</button>
         <button class="dlbtn" onclick="dlRes(${idx})">↓ 파일</button>
-        <button class="dlbtn" onclick="dlAllRes()" title="완료된 파일 전체 다운로드">↓ 전체</button>
       </div>
     </div>
     <div id="${codeGridId}"
