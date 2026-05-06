@@ -1,0 +1,37 @@
+services:
+  rtl-converter:
+    build: .
+    image: rtl-converter:latest
+    container_name: rtl-converter
+    ports:
+      - "${PORT:-8080}:8080"
+    volumes:
+      # .env — LLM 서버 설정 (필수)
+      - ./.env:/app/.env:ro
+      # LLM 로그 저장 위치
+      - ./logs:/app/logs
+      # hooks 설정 (선택)
+      - ./rtl-converter-hooks.js:/app/rtl-converter-hooks.js:ro
+      # config 튜닝 (선택)
+      - ./rtl-converter-config.js:/app/rtl-converter-config.js:ro
+    environment:
+      - PORT=8080
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ── WSL 인트라넷 환경에서는 아래 nginx 프록시 추가 가능 ────
+  # nginx:
+  #   image: nginx:alpine
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+  #     - ./certs:/etc/nginx/certs:ro
+  #   depends_on:
+  #     - rtl-converter
