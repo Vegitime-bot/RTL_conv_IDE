@@ -2616,13 +2616,13 @@ async function callLLM(host, model, systemMsg, userMsg, onChunk, mode = 'rtl', s
   const thinkBuf    = getThinkingBuf(); // 계산용 (전송 안 함)
 
 
-  // LLM 통신은 브라우저에서 직접 — FastAPI가 LLM 서버에 접근 불가한 환경 대응
-  const useProxy = false;
-  const fetchUrl = endpoint;
+  // dev 서버 연결 시 /llm-proxy 경유, 미연결 시 브라우저 직접 연결
+  const useProxy = window._devServerAvailable;
+  const fetchUrl = useProxy ? devUrl('/llm-proxy') : endpoint;
 
   const headers = { 'Content-Type': 'application/json' };
   if (apiKey)   headers['Authorization'] = `Bearer ${apiKey}`;
-  // useProxy=false: 브라우저 직접 연결, X-Target-URL 불필요
+  if (useProxy) headers['X-Target-URL']  = endpoint;
 
   // OpenAI Compatible 표준 필드만 body에 포함
   const bodyObj = {
@@ -6083,12 +6083,12 @@ async function testConnection(){
   const targetEndpoint = `${host}/models`;
   dbgLog('REQ', `GET ${targetEndpoint}`, 'req');
 
-  // 연결 테스트도 브라우저에서 직접 — 프록시 불필요
-  const useProxy = false;
-  const fetchUrl = targetEndpoint;
+  // dev 서버 연결 시 /get-proxy 경유, 미연결 시 브라우저 직접 연결
+  const useProxy = window._devServerAvailable;
+  const fetchUrl = useProxy ? devUrl('/get-proxy') : targetEndpoint;
   const headers  = {};
   if (apiKey)   headers['Authorization'] = `Bearer ${apiKey}`;
-  // useProxy=false: 브라우저 직접 연결
+  if (useProxy) headers['X-Target-URL']  = targetEndpoint;
 
   try {
     const _tc = new AbortController();
