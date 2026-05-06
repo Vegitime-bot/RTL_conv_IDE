@@ -644,6 +644,13 @@ textarea::placeholder{color:var(--text3);}
           <span style="font-family:var(--mono);font-size:10px;color:var(--text3);">— 변환 후 자동 lint · 오류 시 LLM 자동 수정 재시도 (dev 서버 필요)</span>
         </label>
 
+        <!-- 완료 Hook (기본 OFF) -->
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+          <input type="checkbox" id="hookOpt" style="accent-color:var(--amber);">
+          <span style="font-family:var(--mono);font-size:10px;color:var(--text2);">완료 Hook</span>
+          <span style="font-family:var(--mono);font-size:10px;color:var(--text3);">— 변환 완료 시 설정된 URL 호출 (rtl-converter-hooks.js)</span>
+        </label>
+
         <!-- 순차 처리 시 자동 적용 안내 -->
         <div style="font-family:var(--mono);font-size:10px;color:var(--text3);padding:5px 8px;background:var(--s2);border-radius:4px;border-left:2px solid var(--b2);">
           128K 초과 시 순차 처리 자동 전환 — 프롬프트 압축 · 시그니처 전용 모드 자동 적용
@@ -1503,7 +1510,7 @@ async function loadConfig() {
   if (_cfg) return _cfg;
   try {
     if (window._devServerAvailable) {
-      const res = await fetch('http://localhost:3000/config');
+      const res = await fetch(devUrl('/config'));
       if (res.ok) {
         const js = await res.text();
         const fn = new Function(js + '\nreturn RTL_CONVERTER_CONFIG;');
@@ -1519,6 +1526,122 @@ async function loadConfig() {
   return _cfg;
 }
 
+
+// ════════════════════════════════════════════════════════
+// 완료 Hook 시스템
+// ════════════════════════════════════════════════════════
+let _hooks = null;
+
+async function loadHooks(forceReload = false) {
+  if (_hooks && !forceReload) return _hooks;
+  try {
+    if (window._devServerAvailable) {
+      const res = await fetch(devUrl('/hooks'));
+      if (res.ok) {
+        const js = await res.text();
+        dbgLog('INF', `[hooks] 파일 수신 ${js.length}자`, 'inf');
+        try {
+          const fn = new Function(js + '\nreturn RTL_CONVERTER_HOOKS;');
+          _hooks = fn();
+          const hasAnalysis = !!_hooks.ON_ANALYSIS_COMPLETE?.url;
+          const hasComplete = !!_hooks.ON_COMPLETE?.url;
+          dbgLog('INF',
+            `[hooks] 로드됨 — ON_ANALYSIS_COMPLETE: ${hasAnalysis ? _hooks.ON_ANALYSIS_COMPLETE.url : '미설정'}` +
+            ` / ON_COMPLETE: ${hasComplete ? _hooks.ON_COMPLETE.url : '미설정'}`, 'inf');
+          return _hooks;
+        } catch(evalErr) {
+          dbgLog('ERR', `[hooks] rtl-converter-hooks.js 실행 오류: ${evalErr.message}`, 'err');
+        }
+      } else {
+        dbgLog('ERR', `[hooks] HTTP ${res.status} — rtl-converter-hooks.js 파일이 서버 디렉터리에 있는지 확인`, 'err');
+      }
+    }
+  } catch(e) {
+    dbgLog('INF', `[hooks] 로드 실패: ${e.message}`, 'inf');
+  }
+  // fallback: 빈 구조
+  _hooks = { ON_COMPLETE: {}, ON_ANALYSIS_COMPLETE: {} };
+  return _hooks;
+}
+
+function isHookOn() {
+  return document.getElementById('hookOpt')?.checked ?? false;
+}
+
+// ── 공통 hook 호출 헬퍼 ──────────────────────────────────
+// knox_id, message, status 파라미터를 받는 공통 hook 호출 함수
+async function _callHook(hookCfg, knox_id, message, status = 'success') {
+  if (!hookCfg?.url) return;
+  const name = hookCfg.name || hookCfg.url;
+
+  function applyCtx(val) {
+    return typeof val === 'string'
+      ? val.replace(/\{\{knox_id\}\}/g, encodeURIComponent(knox_id))
+           .replace(/\{\{message\}\}/g,  encodeURIComponent(message))
+           .replace(/\{\{status\}\}/g,   encodeURIComponent(status))
+      : val;
+  }
+
+  const params = hookCfg.params || {
+    knox_id: '{{knox_id}}',
+    message: '{{message}}',
+    status:  '{{status}}',
+  };
+  const query   = Object.entries(params)
+    .map(([k, v]) => `${encodeURIComponent(k)}=${applyCtx(v)}`)
+    .join('&');
+  const fullUrl = `${hookCfg.url.replace(/\?.*$/, '')}?${query}`;
+
+  dbgLog('INF', `[hook] "${name}" → GET ${fullUrl}`, 'inf');
+  try {
+    const res    = await fetch(devUrl('/hook'), {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ name, url: fullUrl, method: 'GET' }),
+    });
+    const result = await res.json();
+    if (result.ok) dbgLog('RES', `[hook] "${name}" 성공 HTTP ${result.status}`, 'res');
+    else           dbgLog('ERR', `[hook] "${name}" 실패: ${result.error || result.status}`, 'err');
+  } catch(e) {
+    dbgLog('ERR', `[hook] "${name}" 오류: ${e.message}`, 'err');
+  }
+}
+
+// ── ON_ANALYSIS_COMPLETE: Algo + μArch AI 분석 완료 시 ───
+// status: 'success' | 'error' (분석 결과 여부)
+async function runOnAnalysisCompleteHook(hasError = false) {
+  if (!isHookOn()) return;
+  const hooks = await loadHooks(true);
+  if (!hooks?.ON_ANALYSIS_COMPLETE?.url) {
+    dbgLog('INF', '[hook] ON_ANALYSIS_COMPLETE URL 미설정 — 건너뜀', 'inf');
+    return;
+  }
+  const algoCnt  = _impactData.algo?.items?.length  || 0;
+  const uarchCnt = _impactData.uarch?.items?.length || 0;
+  const knox_id  = `ALGO-${algoCnt},ARCH-${uarchCnt}`;
+  const message  = `분석 완료 — Algo ${algoCnt}건 / μArch ${uarchCnt}건`;
+  const status   = hasError ? 'error' : 'success';
+  await _callHook(hooks.ON_ANALYSIS_COMPLETE, knox_id, message, status);
+}
+
+// ── ON_COMPLETE: RTL 변환 생성 완료 시 ───────────────────
+// status: 'success' (전체 완료) | 'partial' (일부 오류) | 'error' (전체 실패)
+async function runOnCompleteHooks(okFiles) {
+  if (!isHookOn()) return;
+  const hooks = await loadHooks(true);
+  if (!hooks?.ON_COMPLETE?.url) {
+    dbgLog('INF', '[hook] ON_COMPLETE URL 미설정 — 건너뜀', 'inf');
+    return;
+  }
+  const errFiles  = rtlFiles.filter(f => f.status === 'err' || f.status === 'lint-warn');
+  const knox_id   = okFiles.map(f => f.name).join(',');
+  const message   = `RTL 변환 완료 ${okFiles.length}/${rtlFiles.length}` +
+                    (errFiles.length ? ` (오류 ${errFiles.length}건)` : '');
+  const status    = errFiles.length === 0          ? 'success'
+                  : okFiles.length  === 0          ? 'error'
+                  :                                  'partial';
+  await _callHook(hooks.ON_COMPLETE, knox_id, message, status);
+}
 
 // ════════════════════════════════════════════════════════
 // μArch 청크 분할
@@ -1749,9 +1872,8 @@ Rules:
   await callLLM(host, model, `${getLang().impactExpert} Respond only in valid JSON.`, prompt,
     partial => { raw = partial; }, 'json', _llmAborts['sum-analyze']?.controller.signal);
 
-  const m = raw.match(/\{[\s\S]*\}/);
-  if (!m) throw new Error('Phase 1 JSON 파싱 실패');
-  const result = JSON.parse(m[0]);
+  const result = extractJson(raw);
+  if (!result) throw new Error('Phase 1 JSON 파싱 실패');
   const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
 
   _summaryTargetFiles = result.files || [];
@@ -1826,9 +1948,8 @@ Rules:
   await callLLM(host, model, `${getLang().impactExpert} Respond only in valid JSON.`, prompt,
     partial => { raw = partial; }, 'json', _llmAborts['sum-analyze']?.controller.signal);
 
-  const m = raw.match(/\{[\s\S]*\}/);
-  if (!m) throw new Error('Phase 2 JSON 파싱 실패');
-  const result  = JSON.parse(m[0]);
+  const result = extractJson(raw);
+  if (!result) throw new Error('Phase 2 JSON 파싱 실패');
   const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
 
   // 섹션 수집: 중복 제거, 관련 파일 병합
@@ -2420,13 +2541,14 @@ async function _runBatchNow(mode = 'single') {
 
 // ── LLM 대화 로그 저장 ────────────────────────────────────
 const llmLog = [];
-const LOG_SERVER = 'http://localhost:3000/save-log';
+// LOG_SERVER: devUrl('/save-log') 를 직접 사용 (포트 동적 감지 보장)
 
 // REQUEST 단계 즉시 기록 (응답 여부와 무관) — fire-and-forget
 function saveReqLog(entry) {
   llmLog.push(entry);
+  if (!window._devServerAvailable) return;  // dev 서버 없으면 메모리만
   // await 없이 즉시 반환 — pending 상태에서도 기록 보장
-  fetch(LOG_SERVER, {
+  fetch(devUrl('/save-log'), {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(entry),
@@ -2434,8 +2556,8 @@ function saveReqLog(entry) {
     if (res.ok) res.json().then(d =>
       dbgLog('INF', `[req-log] #${d.count} 저장 → ${d.file}`, 'inf')
     );
-  }).catch(() => {
-    dbgLog('INF', `[req-log] dev 서버 없음 — 메모리 누적 (${llmLog.length}건)`, 'inf');
+  }).catch(e => {
+    dbgLog('INF', `[req-log] 저장 실패 (${e.message}) — 메모리 누적 (${llmLog.length}건)`, 'inf');
   });
 }
 
@@ -2449,7 +2571,7 @@ async function saveLlmLog(entry) {
     llmLog.push(entry);
   }
   try {
-    const res = await fetch(LOG_SERVER, {
+    const res = await fetch(devUrl('/save-log'), {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(entry),
@@ -2494,12 +2616,13 @@ async function callLLM(host, model, systemMsg, userMsg, onChunk, mode = 'rtl', s
   const thinkBuf    = getThinkingBuf(); // 계산용 (전송 안 함)
 
 
-  const useProxy = window._devServerAvailable;
-  const fetchUrl = useProxy ? 'http://localhost:3000/llm-proxy' : endpoint;
+  // LLM 통신은 브라우저에서 직접 — FastAPI가 LLM 서버에 접근 불가한 환경 대응
+  const useProxy = false;
+  const fetchUrl = endpoint;
 
   const headers = { 'Content-Type': 'application/json' };
   if (apiKey)   headers['Authorization'] = `Bearer ${apiKey}`;
-  if (useProxy) headers['X-Target-URL']  = endpoint;
+  // useProxy=false: 브라우저 직접 연결, X-Target-URL 불필요
 
   // OpenAI Compatible 표준 필드만 body에 포함
   const bodyObj = {
@@ -2888,9 +3011,8 @@ Return at most 5 questions. If nothing is ambiguous, return { "questions": [] }`
     `${lang.expert} Identify ambiguities before code conversion. Respond only in valid JSON.`,
     prompt, p => { raw = p; }, 'json');
 
-  const m = raw.match(/\{[\s\S]*\}/);
-  if (!m) return [];
-  const result = JSON.parse(m[0]);
+  const result = extractJson(raw);
+  if (!result) return [];
   dbgLog('INF', `[pre-clarify] LLM 질문 ${result.questions?.length ?? 0}개 생성`, 'inf');
   return result.questions || [];
 }
@@ -2963,6 +3085,62 @@ function _llmAbort(key) {
   entry.controller.abort();
   _llmUnfreeze(key);
   dbgLog('INF', `[abort] ${key} 중단됨`, 'inf');
+}
+
+// ── JSON 추출 공통 헬퍼 ───────────────────────────────────
+// LLM 응답에서 JSON 객체를 안전하게 추출
+// 처리 순서:
+//   1. 마크다운 코드블록 제거 (```json ... ```)
+//   2. <think>...</think> 태그 제거 (thinking 모델)
+//   3. 중괄호 카운팅으로 정확한 JSON 경계 추출
+//   4. JSON.parse 시도 — 실패 시 앞뒤 텍스트 제거 후 재시도
+function extractJson(raw) {
+  if (!raw) return null;
+
+  // 마크다운 코드블록 제거
+  let text = raw
+    .replace(/```json\s*/gi, '')
+    .replace(/```\s*/g, '')
+    .trim();
+
+  // thinking 태그 제거
+  text = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+
+  // 중괄호 카운팅으로 JSON 경계 추출
+  const start = text.indexOf('{');
+  if (start === -1) return null;
+
+  let depth = 0;
+  let inStr  = false;
+  let escape = false;
+  let end    = -1;
+
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (escape)          { escape = false; continue; }
+    if (ch === '\\')   { escape = true;  continue; }
+    if (ch === '"')      { inStr = !inStr; continue; }
+    if (inStr)           { continue; }
+    if (ch === '{')      { depth++; }
+    else if (ch === '}') {
+      depth--;
+      if (depth === 0)   { end = i; break; }
+    }
+  }
+
+  if (end === -1) return null;
+
+  const jsonStr = text.slice(start, end + 1);
+  try {
+    return JSON.parse(jsonStr);
+  } catch(e) {
+    // 마지막 시도: trailing comma 등 소소한 오류 제거
+    try {
+      return JSON.parse(jsonStr.replace(/,\s*([}\]])/g, '$1'));
+    } catch(_) {
+      return null;
+    }
+  }
 }
 
 function parseResult(raw, fname) {
@@ -3746,9 +3924,8 @@ Respond in JSON only (no markdown, no explanation):
       (partial) => { raw = partial; },
       'json-sel', _iaSignal
     );
-    const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error('JSON 파싱 실패');
-    const result = JSON.parse(jsonMatch[0]);
+    const result = extractJson(raw);
+    if (!result) throw new Error('JSON 파싱 실패 (iter)');
 
     // 선택 반영
     rtlFiles.forEach(f => { f._iterSelected = false; });
@@ -4245,9 +4422,8 @@ Rules:
       'json', _reSignal
     );
 
-    const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error('JSON 파싱 실패');
-    const result  = JSON.parse(jsonMatch[0]);
+    const result = extractJson(raw);
+    if (!result) throw new Error('JSON 파싱 실패 (reAnalyzeImpact)');
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
 
     _impactSave(mk);
@@ -4262,6 +4438,15 @@ Rules:
 
     // 입력값은 유지 (사용자가 직접 지울 수 있도록)
     if (input) input.style.borderColor = '';
+
+    // 분석 완료 hook — Algo/μArch 둘 다 분석된 경우에만 호출
+    const _bothDone = _impactData.algo?.items?.length && _impactData.uarch?.items?.length;
+    const _oneDone  = !getText('ai') && !getText('at') ? _impactData.uarch?.items?.length
+                    : !getText('ua') && !getText('ut') ? _impactData.algo?.items?.length
+                    : false;
+    if (_bothDone || _oneDone) {
+      runOnAnalysisCompleteHook().catch(e => dbgLog('ERR', `[hook] ${e.message}`, 'err'));
+    }
 
   } catch(e) {
     impactEl.innerHTML = `<div style="font-family:var(--mono);font-size:12px;color:var(--red);">재분석 실패: ${esc(e.message)}</div>`;
@@ -4380,9 +4565,8 @@ Respond in JSON only with the modified item (same structure, all fields required
     await callLLM(host, model, 'Respond only in valid JSON.', prompt, p => { raw = p; }, 'json-sm');
     dbgLog('RES', `[impact llm-edit] 요청: "${request}" → ${raw}`, 'res');  // ③ 응답 콘솔 출력
 
-    const m = raw.match(/\{[\s\S]*\}/);
-    if (!m) throw new Error('JSON 파싱 실패');
-    const updated = JSON.parse(m[0]);
+    const updated = extractJson(raw);
+    if (!updated) throw new Error('JSON 파싱 실패 (항목 수정)');
 
     _impactSave(mk);
     Object.assign(_impactData[mk].items[idx], updated, { _userEdited: true });
@@ -4647,9 +4831,18 @@ function startAutoRun() {
     <div style="margin-bottom:10px;color:var(--amber);">
       ⚠ 사용자 확인 없이 자동 실행됩니다. AI 분석 결과가 부정확하면 생성된 RTL 코드도 부정확할 수 있습니다.
     </div>
-    <div style="margin-bottom:8px;font-weight:500;color:var(--text);">실행 순서:</div>
-    <div style="background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:8px 12px;line-height:2;">
-      ${steps.map((s, i) => `<span style="color:var(--text3);">${i+1}.</span> ${s}`).join('<br>')}
+    <div style="margin-bottom:8px;font-weight:500;color:var(--text);">실행 범위:</div>
+    <div style="background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:10px 14px;display:flex;flex-direction:column;gap:8px;">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+        <input type="checkbox" id="arDoAnalysis" checked style="accent-color:var(--accent);">
+        <span style="font-family:var(--mono);font-size:12px;color:var(--text);">분석까지</span>
+        <span style="font-family:var(--mono);font-size:10px;color:var(--text3);">— Algo/μArch AI 분석 + Summary</span>
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+        <input type="checkbox" id="arDoConvert" checked style="accent-color:var(--purple);">
+        <span style="font-family:var(--mono);font-size:12px;color:var(--text);">RTL 생성까지</span>
+        <span style="font-family:var(--mono);font-size:10px;color:var(--text3);">— 변환 실행 (분석 완료 필요)</span>
+      </label>
     </div>
     <div style="margin-top:10px;font-size:11px;color:var(--text3);">
       ${getLang().fileDesc} 파일: ${rtlFiles.length}개 · ${hasAlgo?'Algo ✓':'Algo –'} · ${hasUarch?'μArch ✓':'μArch –'}
@@ -4659,8 +4852,11 @@ function startAutoRun() {
 }
 
 function confirmAutoRun() {
+  const doAnalysis = document.getElementById('arDoAnalysis')?.checked ?? true;
+  const doConvert  = document.getElementById('arDoConvert')?.checked ?? true;
+  if (!doAnalysis && !doConvert) { alert('분석 또는 RTL 생성 중 하나 이상 선택하세요.'); return; }
   document.getElementById('autoRunModal').style.display = 'none';
-  _runAutoRunPipeline();
+  _runAutoRunPipeline({ doAnalysis, doConvert });
 }
 
 function stopAutoRun() {
@@ -4716,7 +4912,11 @@ function autoRunSetStatus(msg, color) {
 }
 
 // ── 파이프라인 메인 ──────────────────────────────────────
-async function _runAutoRunPipeline() {
+// opts: { doAnalysis: bool, doConvert: bool }
+async function _runAutoRunPipeline(opts = {}) {
+  const doAnalysis = opts.doAnalysis ?? true;
+  const doConvert  = opts.doConvert  ?? true;
+
   _autoRunAborted = false;
   autoRunOverlayShow();
 
@@ -4725,55 +4925,64 @@ async function _runAutoRunPipeline() {
   const hasAlgo  = getText('ai') || getText('at');
   const hasUarch = getText('ua') || getText('ut');
 
-  // 스텝 표시 초기화
-  if (hasAlgo)  autoRunAddStep('algo',    '<span class="spin">◌</span>', 'Algo Diff 분석', 'active');
-  if (hasUarch) autoRunAddStep('uarch',   '<span class="spin">◌</span>', 'μArch Diff 분석', 'active');
-  autoRunAddStep('summary', '○', 'Summary 분석', '');
-  autoRunAddStep('convert', '○', 'RTL 변환', '');
+  // 스텝 표시 초기화 (선택된 스텝만)
+  if (doAnalysis) {
+    if (hasAlgo)  autoRunAddStep('algo',    '<span class="spin">◌</span>', 'Algo Diff 분석', 'active');
+    if (hasUarch) autoRunAddStep('uarch',   '<span class="spin">◌</span>', 'μArch Diff 분석', 'active');
+    autoRunAddStep('summary', '○', 'Summary 분석', '');
+  }
+  if (doConvert) autoRunAddStep('convert', '○', 'RTL 변환', '');
 
   try {
-    // ── Step 1: Algo + μArch diff 빌드 (UI 업데이트 없이) ──
-    if (hasAlgo)  { buildAlgoDiffs();  }
-    if (hasUarch) { buildUarchDiffs(); }
+    if (doAnalysis) {
+      // ── Step 1: Algo + μArch diff 빌드 ───────────────────
+      if (hasAlgo)  { buildAlgoDiffs();  }
+      if (hasUarch) { buildUarchDiffs(); }
 
-    // ── Step 2: Algo AI 분석 + μArch AI 분석 병렬 실행 ───────
-    autoRunSetStatus('Diff AI 분석 중…', 'var(--amber)');
+      // ── Step 2: Algo AI 분석 + μArch AI 분석 병렬 실행 ──
+      autoRunSetStatus('Diff AI 분석 중…', 'var(--amber)');
 
-    const algoPromise  = hasAlgo
-      ? _autoRunAnalyze('algo',  host, model)
-      : Promise.resolve();
-    const uarchPromise = hasUarch
-      ? _autoRunAnalyze('uarch', host, model)
-      : Promise.resolve();
+      const algoPromise  = hasAlgo
+        ? _autoRunAnalyze('algo',  host, model)
+        : Promise.resolve();
+      const uarchPromise = hasUarch
+        ? _autoRunAnalyze('uarch', host, model)
+        : Promise.resolve();
 
-    // 병렬 대기 — 하나라도 abort되면 전체 중단
-    await Promise.all([algoPromise, uarchPromise]);
+      await Promise.all([algoPromise, uarchPromise]);
+      if (_autoRunAborted) throw new DOMException('Aborted', 'AbortError');
 
-    if (_autoRunAborted) throw new DOMException('Aborted', 'AbortError');
+      if (hasAlgo)  autoRunUpdateStep('algo',  '✓', 'done');
+      if (hasUarch) autoRunUpdateStep('uarch', '✓', 'done');
 
-    if (hasAlgo)  autoRunUpdateStep('algo',  '✓', 'done');
-    if (hasUarch) autoRunUpdateStep('uarch', '✓', 'done');
+      runOnAnalysisCompleteHook().catch(e => dbgLog('ERR', `[hook] ${e.message}`, 'err'));
 
-    // ── Step 3: Summary 분석 ─────────────────────────────────
-    if (_autoRunAborted) throw new DOMException('Aborted', 'AbortError');
-    autoRunUpdateStep('summary', '<span class="spin">◌</span>', 'active');
-    autoRunSetStatus('Summary 분석 중…', 'var(--amber)');
+      // ── Step 3: Summary 분석 ────────────────────────────
+      if (_autoRunAborted) throw new DOMException('Aborted', 'AbortError');
+      autoRunUpdateStep('summary', '<span class="spin">◌</span>', 'active');
+      autoRunSetStatus('Summary 분석 중…', 'var(--amber)');
 
-    await _autoRunSummary(host, model);
+      await _autoRunSummary(host, model);
+      if (_autoRunAborted) throw new DOMException('Aborted', 'AbortError');
+      autoRunUpdateStep('summary', '✓', 'done');
 
-    if (_autoRunAborted) throw new DOMException('Aborted', 'AbortError');
-    autoRunUpdateStep('summary', '✓', 'done');
+      if (!doConvert) {
+        autoRunSetStatus('✓ 분석 완료', 'var(--green)');
+        dbgLog('RES', '[auto-run] 분석 파이프라인 완료', 'res');
+        autoRunOverlayDone();
+        return;
+      }
+    }
 
-    // ── Step 4: RTL 변환 ─────────────────────────────────────
-    autoRunUpdateStep('convert', '<span class="spin">◌</span>', 'active');
-    autoRunSetStatus('RTL 변환 중…', 'var(--amber)');
+    if (doConvert) {
+      // ── Step 4: RTL 변환 ────────────────────────────────
+      autoRunUpdateStep('convert', '<span class="spin">◌</span>', 'active');
+      autoRunSetStatus('RTL 변환 중…', 'var(--amber)');
+      buildSummary();
+      await _autoRunConvert();
+      autoRunUpdateStep('convert', '✓', 'done');
+    }
 
-    // Summary 단계로 이동해서 buildSummary 갱신
-    buildSummary();
-    // checkTokensAndRun → _runBatchNow (토큰 초과 시 자동 순차 처리)
-    await _autoRunConvert();
-
-    autoRunUpdateStep('convert', '✓', 'done');
     autoRunSetStatus('✓ 일괄 실행 완료', 'var(--green)');
     dbgLog('RES', '[auto-run] 전체 파이프라인 완료', 'res');
 
@@ -4864,9 +5073,8 @@ Rules:
     await callLLM(host, model, `${getLang().impactExpert} Respond only in valid JSON.`,
       prompt, partial => { raw = partial; }, 'json', signal);
 
-    const m = raw.match(/\{[\s\S]*\}/);
-    if (!m) throw new Error(`${mk} JSON 파싱 실패`);
-    const result = JSON.parse(m[0]);
+    const result = extractJson(raw);
+    if (!result) throw new Error(`${mk} JSON 파싱 실패 (reAnalyzeImpact)`);
 
     _impactSave(mk);
     _impactData[mk] = result;
@@ -5036,8 +5244,8 @@ const LINT_MAX_RETRY = 2;
 // 단일 파일 lint 실행 → { ok, errors, warnings, raw, linter, note }
 async function lintFile(code, filename) {
   const host = (document.getElementById('oHost').value || '').replace(/\/+$/, '');
-  // dev 서버는 항상 localhost:3000 — LLM host와 별개
-  const lintUrl = 'http://localhost:3000/lint';
+  // dev 서버 포트 — _devPort로 자동 감지 (3000 또는 3030)
+  const lintUrl = devUrl('/lint');
   const lang = getLang().extractSig === 'systemc' ? 'systemc' : 'rtl';
 
   try {
@@ -5397,6 +5605,11 @@ async function runSequential(ctx, startIdx = 0) {
   if (ok < rtlFiles.length) showResumeBtn(); else hideResumeBtn();
   if (ok > 0) { showIterPanel(); showDlAllBtn(); }
   setStatus('ok', `순차 완료 ${ok}/${rtlFiles.length}`);
+  // 완료 hook 실행 (fire-and-forget)
+  if (ok > 0) {
+    const _okFiles = rtlFiles.filter(f => f.status === 'ok' || f.status === 'lint-warn');
+    runOnCompleteHooks(_okFiles).catch(e => dbgLog('ERR', `[hook] ${e.message}`, 'err'));
+  }
   dbgLog('RES', `✓ 순차 완료 ${ok}/${rtlFiles.length}`, 'res');
   const _nb1 = document.getElementById('nextBtn');
   if (_nb1) { _nb1.disabled = false; _nb1.textContent = _nb1.dataset.origText || '▶ 재변환'; }
@@ -5545,6 +5758,11 @@ ${allRtl}`;
   if (ok < rtlFiles.length) showResumeBtn(); else hideResumeBtn();
   if (ok > 0) { showIterPanel(); showDlAllBtn(); }
   setStatus('ok', `단일 완료 ${ok}/${rtlFiles.length}`);
+  // 완료 hook 실행 (fire-and-forget)
+  if (ok > 0) {
+    const _okFiles = rtlFiles.filter(f => f.status === 'ok' || f.status === 'lint-warn');
+    runOnCompleteHooks(_okFiles).catch(e => dbgLog('ERR', `[hook] ${e.message}`, 'err'));
+  }
   dbgLog('RES', `✓ 단일 완료 ${ok}/${rtlFiles.length}`, 'res');
   const _nb2 = document.getElementById('nextBtn');
   if (_nb2) { _nb2.disabled = false; _nb2.textContent = _nb2.dataset.origText || '▶ 재변환'; }
@@ -5865,14 +6083,18 @@ async function testConnection(){
   const targetEndpoint = `${host}/models`;
   dbgLog('REQ', `GET ${targetEndpoint}`, 'req');
 
-  const useProxy = window._devServerAvailable;
-  const fetchUrl = useProxy ? 'http://localhost:3000/get-proxy' : targetEndpoint;
+  // 연결 테스트도 브라우저에서 직접 — 프록시 불필요
+  const useProxy = false;
+  const fetchUrl = targetEndpoint;
   const headers  = {};
   if (apiKey)   headers['Authorization'] = `Bearer ${apiKey}`;
-  if (useProxy) headers['X-Target-URL']  = targetEndpoint;
+  // useProxy=false: 브라우저 직접 연결
 
   try {
-    const res  = await fetch(fetchUrl, { headers });
+    const _tc = new AbortController();
+    const _tt = setTimeout(() => _tc.abort(), 15000);
+    const res  = await fetch(fetchUrl, { headers, signal: _tc.signal });
+    clearTimeout(_tt);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     const names = (data.data||[]).map(m => m.id||m.name).filter(Boolean).sort();
@@ -5985,18 +6207,104 @@ window.addEventListener('resize', () => {
     if (mappings[mk]?.length) requestAnimationFrame(() => drawArrows(mk));
   });
 });
+// ── 서버 URL 결정 ──────────────────────────────────────────
+// VS Code 포트 포워딩:  https://hpc-host/proxy/8080/  → basePath=/proxy/8080
+// 직접 접속:            http://localhost:8080/          → basePath=''
+// file:// 직접 열기:    localhost:8080 fallback
 window._devServerAvailable = false;
-fetch('http://localhost:3000/ping')
-  .then(r => r.json())
-  .then(d => {
-    if (!d.ok) return;
+window._serverOrigin  = '';   // https://hpc-host
+window._serverBase    = '';   // /proxy/8080  (포트 포워딩 prefix)
+
+function devUrl(path) {
+  return window._serverOrigin + window._serverBase + path;
+}
+
+// pathname에서 basePath 추출
+// /proxy/8080/  → /proxy/8080
+// /             → ''
+function _getBasePath() {
+  const p = window.location.pathname;
+  if (!p || p === '/') return '';
+  // HTML 파일명 제거 (직접 열기 시): /foo/bar.html → /foo
+  const stripped = p.endsWith('/') ? p.slice(0, -1) : p.replace(/\/[^/]*$/, '');
+  return stripped;
+}
+
+// 서버 감지
+async function _tryPing() {
+  const origin = window.location.origin;
+
+  if (!origin.startsWith('file://')) {
+    const base = _getBasePath();
+    const url  = `${origin}${base}/ping`;
+    try {
+      // AbortSignal.timeout 대신 수동 타임아웃 — Firefox NS_BINDING_ABORTED 방지
+      const ctrl    = new AbortController();
+      const timer   = setTimeout(() => ctrl.abort(), 8000);
+      const r = await fetch(url, { signal: ctrl.signal });
+      clearTimeout(timer);
+      const d = await r.json();
+      if (d.ok) {
+        window._serverOrigin = origin;
+        window._serverBase   = base;
+        return true;
+      }
+    } catch(e) {
+      dbgLog('INF', `[ping] ${url} 실패: ${e.message}`, 'inf');
+    }
+  }
+
+  // file:// 직접 열기 — localhost:8080 fallback
+  try {
+    const ctrl2  = new AbortController();
+    const timer2 = setTimeout(() => ctrl2.abort(), 3000);
+    const r = await fetch('http://localhost:8080/ping', { signal: ctrl2.signal });
+    clearTimeout(timer2);
+    const d = await r.json();
+    if (d.ok) {
+      window._serverOrigin = 'http://localhost:8080';
+      window._serverBase   = '';
+      return true;
+    }
+  } catch(_) {}
+
+  return false;
+}
+
+// postMessage 리스너 (same-origin 검증)
+window.addEventListener('message', (e) => {
+  if (window._serverOrigin && e.origin !== window._serverOrigin &&
+      e.origin !== window.location.origin) return;
+  const { action } = e.data || {};
+  if (action === 'auto-run-analysis') _runAutoRunPipeline({ doAnalysis: true,  doConvert: false });
+  else if (action === 'auto-run-convert')  _runAutoRunPipeline({ doAnalysis: false, doConvert: true });
+  else if (action === 'auto-run-all')      _runAutoRunPipeline({ doAnalysis: true,  doConvert: true });
+});
+
+_tryPing()
+  .then(ok => {
+    if (!ok) return;
     window._devServerAvailable = true;
-    dbgLog('INF', 'Dev 서버 감지됨 (localhost:3000) — CORS 프록시 + 파일 로그 활성화', 'res');
-    document.getElementById('ps').textContent = '⚡ dev server';
+    dbgLog('INF', `서버 감지됨 (${window._serverOrigin}${window._serverBase}) — 프록시 + 파일 로그 활성화`, 'res');
+    document.getElementById('ps').textContent = '⚡ server';
     document.getElementById('ps').style.color = 'var(--green)';
 
+    // API 명령 폴링 시작 (3초 간격)
+    setInterval(async () => {
+      try {
+        const r = await fetch(devUrl('/api/poll'));
+        const d = await r.json();
+        if (d.command) {
+          dbgLog('INF', `[api] 명령 수신: ${d.command.action}`, 'inf');
+          if      (d.command.action === 'auto-run-analysis') _runAutoRunPipeline({ doAnalysis: true,  doConvert: false });
+          else if (d.command.action === 'auto-run-convert')  _runAutoRunPipeline({ doAnalysis: false, doConvert: true  });
+          else if (d.command.action === 'auto-run-all')      _runAutoRunPipeline({ doAnalysis: true,  doConvert: true  });
+        }
+      } catch(_) {}
+    }, 3000);
+
     // .env 값 로드
-    return fetch('http://localhost:3000/env').then(r => r.json()).then(env => {
+    return fetch(devUrl('/env')).then(r => r.json()).then(env => {
       if (!env.loaded) {
         dbgLog('INF', '.env 파일 없음 — 기본값 사용 (서버 디렉터리에 .env 생성 권장)', 'inf');
         return;
