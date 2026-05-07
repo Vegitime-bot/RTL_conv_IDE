@@ -2612,6 +2612,9 @@ let _preClarifyAnswers  = [];   // 사용자 답변 목록
 let _preClarifyPending  = null; // 대기 중인 _runBatchNow 파라미터
 
 function isPreClarifyOn() {
+  // 일괄 실행 중 비대화 모드(arInteractive 미체크)면 사전 검토 강제 OFF —
+  // LLM 질문 모달이 떠서 사용자 입력을 기다리면 무인 자동 실행이 멈추기 때문.
+  if (window._autoRunActive && window._autoRunInteractive === false) return false;
   return document.getElementById('preClarifyOpt')?.checked ?? true;
 }
 function isLintOn() {
@@ -2974,23 +2977,41 @@ function parseChangeLine(line) {
   }
 
   // SOURCE/TYPE 정규화 (대소문자 무시 + 알려진 값만 허용)
-  const VALID_SOURCES = new Set(['ALGO','UARCH','BOTH','ITER','LINT']);
+  // ARCH 와 UARCH 는 동의어로 취급 — LLM 이 ID 접두어(ARCH-NNN)와 맞춰 SOURCE 도 ARCH 로 쓰는 케이스 빈발
+  const VALID_SOURCES = new Set(['ALGO','UARCH','ARCH','BOTH','ITER','LINT']);
   const VALID_TYPES   = new Set(['ADD','MOD','REMOVE','FIX']);
   const source = parts[0].trim().toUpperCase();
   const type   = parts[1].trim().toUpperCase();
 
-  // "변경 없음" 라인 인식 — LLM 이 변환 결과 변경이 없을 때 표현하는 형식.
-  // SOURCE 와 TYPE 둘 다 NONE 이면 변경 없음으로 처리. 이 경우 desc 만 의미 있음.
-  // 예) NONE|NONE|NONE|No changes required for this file based on provided change points.
-  if (source === 'NONE' && type === 'NONE') {
+  // === "변경 없음" 라인 인식 ===
+  // 케이스 A: SOURCE 와 TYPE 둘 다 NONE → 파일 전체가 변경 없음
+  //   예) NONE|NONE|NONE|No changes required for this file
+  // 케이스 B: SOURCE 는 유효 + TYPE=NONE → 그 SOURCE 의 특정 ID 들이 이 파일엔 N/A
+  //   예) ALGO|NONE|ALGO-001,ALGO-002|Not applicable to this file
+  //       ARCH|NONE|ARCH-001,...|target ports not present
+  // 두 케이스 모두 valid + noChange 로 처리해서 PARSE? 경고를 띄우지 않음.
+  // ids 는 보존 — UI 에서 "어떤 ID 가 이 파일에 N/A 인지" 사용자가 확인 가능.
+  const isNoChangeAll     = (source === 'NONE' && type === 'NONE');
+  const isNoChangeForIds  = (VALID_SOURCES.has(source) && type === 'NONE');
+
+  if (isNoChangeAll || isNoChangeForIds) {
+    // ids 추출 — 신포맷(4파트) 이고 IDS 필드가 있으면 파싱
+    let idsList = [];
+    if (parts.length >= 4) {
+      const idsRaw = parts[2].trim().toUpperCase();
+      if (idsRaw && idsRaw !== 'NONE') {
+        idsList = idsRaw.split(',').map(s => s.trim())
+          .filter(s => /^(ALGO|ARCH|UARCH)-\w+$/.test(s));
+      }
+    }
     return {
-      source: 'NONE',
+      source: isNoChangeAll ? 'NONE' : source,
       type:   'NONE',
-      ids:    [],
+      ids:    idsList,
       desc:   parts.slice(parts.length >= 4 ? 3 : 2).join('|').trim(),
       raw:    line,
       valid:  true,        // 정상 라인 — PARSE? 경고 안 띄움
-      noChange: true,      // ID audit / 통계에서 제외용
+      noChange: true,      // ID audit 에서 changeIds 추가 제외
     };
   }
 
@@ -3076,6 +3097,7 @@ function extractInlineIds(code) {
 function auditChangeTracking(code, changes) {
   const { ids: codeIds, hasBare } = extractInlineIds(code || '');
   const changeIds = new Set();
+  const removeIds = new Set();   // REMOVE 타입의 IDs — 양방향 검증에서 제외
   const invalidLines = [];
 
   (changes || []).forEach((row, idx) => {
@@ -3083,10 +3105,21 @@ function auditChangeTracking(code, changes) {
     if (!c.valid && row && row.trim()) {
       invalidLines.push({ raw: row, idx });
     }
-    c.ids.forEach(id => changeIds.add(id.replace(/^UARCH-/, 'ARCH-')));
+    if (!c.valid || c.noChange) return;
+
+    // REMOVE 라인의 IDs 는 양방향 검증에서 제외:
+    //   · 삭제된 라인이라 인라인 코멘트 달 곳 자체가 없음 → inChangesOnly false alarm
+    //   · 사용자가 // REMOVED ID: 마커를 남기면 codeIds 에 들어감 → inCodeOnly false alarm
+    // 두 케이스 모두 정상이므로 REMOVE ids 는 일찌감치 빼서 비교 대상에서 제거.
+    const norm = id => id.replace(/^UARCH-/, 'ARCH-');
+    if (c.type === 'REMOVE') {
+      c.ids.forEach(id => removeIds.add(norm(id)));
+    } else {
+      c.ids.forEach(id => changeIds.add(norm(id)));
+    }
   });
 
-  const inCodeOnly    = new Set([...codeIds].filter(id => !changeIds.has(id)));
+  const inCodeOnly    = new Set([...codeIds].filter(id => !changeIds.has(id) && !removeIds.has(id)));
   const inChangesOnly = new Set([...changeIds].filter(id => !codeIds.has(id)));
 
   return {
@@ -4109,14 +4142,18 @@ function showVersion(fileIdx, histIdx) {
       </div>`;
     }
     if (c.noChange) {
-      return `<div class="ci" style="opacity:.75;">
-        <span class="pill" style="background:var(--s2);color:var(--text3);border:1px solid var(--border);">NO CHANGE</span>
+      const srcLabel = c.source && c.source !== 'NONE'
+        ? `<span class="pill" style="background:var(--s2);color:var(--text3);border:1px solid var(--border);">${(c.source==='UARCH'||c.source==='ARCH')?'μARCH':c.source}</span>`
+        : '';
+      const idsHtml = c.ids?.length ? renderIdBadges(c.ids, true) : '';
+      return `<div class="ci" style="opacity:.7;">
+        ${srcLabel}<span class="pill" style="background:var(--s2);color:var(--text3);border:1px solid var(--border);">N/A</span>${idsHtml}
         <p style="color:var(--text3);">${esc(c.desc || '변경 없음')}</p>
       </div>`;
     }
-    const sc  = c.source==='UARCH'?'ua':c.source==='BOTH'?'add':c.source==='ITER'?'mod':'mod';
+    const sc  = (c.source==='UARCH'||c.source==='ARCH')?'ua':c.source==='BOTH'?'add':c.source==='ITER'?'mod':'mod';
     const tc  = c.type==='ADD'?'add':c.type==='REMOVE'?'rem':'mod';
-    const sl  = c.source==='UARCH'?'μARCH':c.source==='BOTH'?'BOTH':c.source==='ITER'?'ITER':'ALGO';
+    const sl  = (c.source==='UARCH'||c.source==='ARCH')?'μARCH':c.source==='BOTH'?'BOTH':c.source==='ITER'?'ITER':'ALGO';
     const ids = renderIdBadges(c.ids, true);
     return `<div class="ci"><span class="pill ${sc}">${sl}</span><span class="pill ${tc}">${c.type}</span>${ids}<p>${esc(c.desc)}</p></div>`;
   }).join('') || `<div style="font-family:var(--mono);font-size:11px;color:var(--text3);">변경 목록 없음</div>`;
@@ -4742,6 +4779,20 @@ function startAutoRun() {
         <span style="font-family:var(--mono);font-size:10px;color:var(--text3);">— 변환 실행 (분석 완료 필요)</span>
       </label>
     </div>
+    <div style="margin-top:10px;margin-bottom:6px;font-weight:500;color:var(--text);">사용자 확인:</div>
+    <div style="background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:10px 14px;">
+      <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;">
+        <input type="checkbox" id="arInteractive" checked style="accent-color:var(--green);margin-top:2px;">
+        <div style="display:flex;flex-direction:column;gap:2px;">
+          <span style="font-family:var(--mono);font-size:12px;color:var(--text);">중간 확인을 거침 <span style="color:var(--text3);font-size:10px;">(권장)</span></span>
+          <span style="font-family:var(--mono);font-size:10px;color:var(--text3);line-height:1.5;">
+            · 변환 전 LLM 사전 검토 질문에 답변<br>
+            · Lint 시 정의되지 않은 module 감지되면 사용자 결정 대기<br>
+            <span style="color:var(--amber);">미체크 시:</span> 사전 검토 건너뜀 + missing module 자동 수정 건너뛰기로 처리
+          </span>
+        </div>
+      </label>
+    </div>
     <div style="margin-top:10px;font-size:11px;color:var(--text3);">
       ${getLang().fileDesc} 파일: ${rtlFiles.length}개 · ${hasAlgo?'Algo ✓':'Algo –'} · ${hasUarch?'μArch ✓':'μArch –'}
     </div>`;
@@ -4750,11 +4801,12 @@ function startAutoRun() {
 }
 
 function confirmAutoRun() {
-  const doAnalysis = document.getElementById('arDoAnalysis')?.checked ?? true;
-  const doConvert  = document.getElementById('arDoConvert')?.checked ?? true;
+  const doAnalysis  = document.getElementById('arDoAnalysis')?.checked ?? true;
+  const doConvert   = document.getElementById('arDoConvert')?.checked ?? true;
+  const interactive = document.getElementById('arInteractive')?.checked ?? true;
   if (!doAnalysis && !doConvert) { alert('분석 또는 RTL 생성 중 하나 이상 선택하세요.'); return; }
   document.getElementById('autoRunModal').style.display = 'none';
-  _runAutoRunPipeline({ doAnalysis, doConvert });
+  _runAutoRunPipeline({ doAnalysis, doConvert, interactive });
 }
 
 function stopAutoRun() {
@@ -4812,11 +4864,24 @@ function autoRunSetStatus(msg, color) {
 // ── 파이프라인 메인 ──────────────────────────────────────
 // opts: { doAnalysis: bool, doConvert: bool }
 async function _runAutoRunPipeline(opts = {}) {
-  const doAnalysis = opts.doAnalysis ?? true;
-  const doConvert  = opts.doConvert  ?? true;
+  const doAnalysis  = opts.doAnalysis  ?? true;
+  const doConvert   = opts.doConvert   ?? true;
+  const interactive = opts.interactive ?? true;
 
   _autoRunAborted = false;
+  // 일괄 실행 중 사용자 확인 모달을 띄울지 여부.
+  // checkTokensAndRunWithClarify (사전 검토)와 lintAndFix (missing module)에서 참조.
+  // false면 두 모달 모두 자동으로 건너뛰고 안전한 기본 동작 적용.
+  window._autoRunInteractive = interactive;
+  window._autoRunActive      = true;
+
   autoRunOverlayShow();
+
+  // 모드 표시 — 비대화 모드에서는 진행 창에 명시
+  if (!interactive) {
+    autoRunSetStatus('⚡ 무인 모드 — 사용자 확인 단계 자동 건너뛰기', 'var(--amber)');
+    dbgLog('INF', '[auto-run] 비대화 모드 — 사전 검토 OFF, missing module 자동 건너뛰기', 'inf');
+  }
 
   const host  = (document.getElementById('oHost').value||'').replace(/\/+$/, '');
   const model = getSelectedModel();
@@ -4901,6 +4966,9 @@ async function _runAutoRunPipeline(opts = {}) {
     });
   } finally {
     autoRunOverlayDone();
+    // 일괄 실행 종료 — 다른 함수가 더 이상 자동 모드로 동작하지 않도록 정리
+    window._autoRunActive      = false;
+    window._autoRunInteractive = true;
   }
 }
 
@@ -5326,14 +5394,27 @@ async function lintAndFix(f, host, model, stepId) {
     // missing module 감지 — 자동 fix 대상에서 제외하고 사용자에게 결정 요청
     const moduleAudit = classifyMissingModuleErrors(lintResult.errors);
     if (moduleAudit.missing.length) {
+      // 비대화 모드(일괄 실행 + arInteractive 미체크)면 모달 띄우지 않고
+      // 가장 안전한 기본값('cancel': 자동 수정 전체 건너뛰기)을 자동 적용.
+      // 이후 사용자가 결과를 검토할 수 있도록 _missingModulesPreserved 에 정보 보존.
+      const isNonInteractive = (window._autoRunActive && window._autoRunInteractive === false);
+      const decision = isNonInteractive
+        ? 'cancel'
+        : await askMissingModuleDecision(f, moduleAudit);
+
       dbgLog('INF',
-        `[lint] ${f.name}: 정의되지 않은 module ${moduleAudit.missing.length}개 감지 — 자동 fix 보류, 사용자 확인 대기`,
+        `[lint] ${f.name}: 정의되지 않은 module ${moduleAudit.missing.length}개 감지 — `
+        + `decision=${decision}${isNonInteractive ? ' (비대화 모드 자동)' : ''}`,
         'inf');
-      // 사용자 확인 모달 표시 → 결정에 따라 분기
-      const decision = await askMissingModuleDecision(f, moduleAudit);
+
       if (decision === 'cancel') {
-        // 자동 fix 전체 건너뜀 — 결과는 그대로 두되 lint 경고로 마킹
-        dbgLog('INF', `[lint] ${f.name}: 사용자가 자동 수정을 건너뜀`, 'inf');
+        // 자동 fix 전체 건너뜀 — 결과는 그대로 두되 lint 경고로 마킹.
+        // 비대화 모드에서도 lintResult 에 missing 정보 보존해 사용자가 사후 검토 가능.
+        f.lintResult = {
+          ...lintResult,
+          _missingModulesPreserved: moduleAudit.missing,
+          _autoSkipped: isNonInteractive ? true : undefined,
+        };
         return;
       } else if (decision === 'fix-others-only') {
         // missing module 오류만 제외하고 나머지 자동 fix
@@ -5704,6 +5785,8 @@ Apply the following finalized ${getLang().fileDesc} change points to ALL provide
 Rules:
 - Apply ALL listed change points to every relevant file
 - Each changed/added line: add ONE comment // ALGO: / // UARCH: / // BOTH: <reason>
+- For REMOVE changes (deleted lines): add a single marker comment at the deletion site so the
+  removal is traceable. Example:  // REMOVED ARCH-009: deprecated config port
 - Maintain correct port/interface connections across modules
 - Do NOT add any explanation or commentary outside the code blocks
 - Each ===FILE: ... === block must contain ONLY valid ${getLang().fileDesc} code
@@ -5722,6 +5805,10 @@ Rules:
 - If a file has NO changes (e.g. none of the change points are relevant to it),
   still emit its ===FILE: ... === section with the original content unchanged,
   and emit a single CHANGES line: NONE|NONE|NONE|<brief reason>
+- If only SOME IDs are not applicable to a file (others were applied),
+  emit a separate line: SOURCE|NONE|<id-list>|<brief reason>
+  Example: ALGO|NONE|ALGO-002,ALGO-003|target signals not present in this file
+  TYPE=NONE means "these IDs are N/A here, not modifications".
 
 ${ctxSection}
 
@@ -5851,6 +5938,8 @@ Each change point has been reviewed and finalized by the engineering team.
 Rules:
 - Apply ALL listed change points precisely
 - Each changed/added line: add ONE inline comment — // ALGO: / // UARCH: / // BOTH: <brief reason>
+- For REMOVE changes (deleted lines): add a single marker comment at the deletion site so the
+  removal is traceable. Example:  // REMOVED ARCH-009: deprecated config port
 - Output ONLY the complete modified ${lang.fileDesc} file (no markdown, no backticks)
 - Do NOT include any explanation, commentary, or notes before or after the code
 - The output must start directly with the first line of ${lang.fileDesc} code
@@ -5866,6 +5955,10 @@ Rules:
 - If NO changes were applied to this file (e.g. none of the change points are relevant),
   output a single line: NONE|NONE|NONE|<brief reason why no changes were needed>
   In this case, the code section above must be the original file, unchanged.
+- If only SOME of the change point IDs are not applicable to this file (the rest were applied),
+  list those non-applicable IDs in a separate line: SOURCE|NONE|<id-list>|<brief reason>
+  Example: ALGO|NONE|ALGO-002,ALGO-003|target signals not present in this file
+  TYPE=NONE means "these IDs are N/A here, not modifications".
 
 ${ctxSection}
 
@@ -5919,16 +6012,21 @@ function showRes(idx){
         <p style="color:var(--text3);font-style:italic;">${esc(c.raw||row)}</p>
       </div>`;
     }
-    // "변경 없음" 라인 — LLM 이 이 파일에 적용된 변경이 없음을 명시한 케이스
+    // "변경 없음" 라인 — LLM 이 이 파일에 적용된 변경이 없음을 명시한 케이스.
+    // SOURCE 가 ALGO/ARCH 등으로 구체적이면 "어떤 카테고리/ID 가 N/A 인지" 같이 표시.
     if (c.noChange) {
-      return `<div class="ci" style="opacity:.75;">
-        <span class="pill" style="background:var(--s2);color:var(--text3);border:1px solid var(--border);">NO CHANGE</span>
+      const srcLabel = c.source && c.source !== 'NONE'
+        ? `<span class="pill" style="background:var(--s2);color:var(--text3);border:1px solid var(--border);">${(c.source==='UARCH'||c.source==='ARCH')?'μARCH':c.source}</span>`
+        : '';
+      const idsHtml = c.ids?.length ? renderIdBadges(c.ids, true) : '';
+      return `<div class="ci" style="opacity:.7;">
+        ${srcLabel}<span class="pill" style="background:var(--s2);color:var(--text3);border:1px solid var(--border);">N/A</span>${idsHtml}
         <p style="color:var(--text3);">${esc(c.desc || '변경 없음')}</p>
       </div>`;
     }
-    const sc  = c.source==='UARCH'?'ua':c.source==='BOTH'?'add':c.source==='ITER'?'mod':'mod';
+    const sc  = (c.source==='UARCH'||c.source==='ARCH')?'ua':c.source==='BOTH'?'add':c.source==='ITER'?'mod':'mod';
     const tc  = c.type==='ADD'?'add':c.type==='REMOVE'?'rem':'mod';
-    const sl  = c.source==='UARCH'?'μARCH':c.source==='BOTH'?'BOTH':c.source==='ITER'?'ITER':'ALGO';
+    const sl  = (c.source==='UARCH'||c.source==='ARCH')?'μARCH':c.source==='BOTH'?'BOTH':c.source==='ITER'?'ITER':'ALGO';
     const ids = renderIdBadges(c.ids, true);
     return`<div class="ci"><span class="pill ${sc}">${sl}</span><span class="pill ${tc}">${c.type}</span>${ids}<p>${esc(c.desc)}</p></div>`;
   }).join('');
