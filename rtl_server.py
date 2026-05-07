@@ -35,7 +35,6 @@ from pathlib import Path
 from typing import Any, Optional
 
 import httpx
-import urllib.request  # 시스템 프록시 감지용
 from dotenv import dotenv_values
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -54,39 +53,6 @@ log = logging.getLogger("rtl-server")
 # ── 경로 설정 ─────────────────────────────────────────────────
 BASE_DIR   = Path(__file__).parent
 
-def make_client(**kwargs) -> httpx.AsyncClient:
-    """
-    Node.js처럼 시스템 프록시를 자동으로 사용하는 httpx 클라이언트 생성.
-    우선순위: .env OUTBOUND_PROXY → 시스템 프록시(urllib) → 환경변수
-    """
-    # 1. .env에 명시된 프록시 (OUTBOUND_PROXY=http://proxy:port)
-    env       = load_env()
-    proxy_url = env.get('OUTBOUND_PROXY')
-
-    # 2. 시스템 프록시 (urllib 감지)
-    if not proxy_url:
-        sys_prx   = urllib.request.getproxies()
-        proxy_url = sys_prx.get('http') or sys_prx.get('https')
-
-    # 3. 환경변수 (Docker 컨테이너 등)
-    if not proxy_url:
-        proxy_url = os.environ.get('HTTP_PROXY') or os.environ.get('http_proxy')
-
-    if proxy_url:
-        log.info(f"[http] 프록시 사용: {proxy_url}")
-        return httpx.AsyncClient(
-            verify=False,
-            proxy=proxy_url,
-            follow_redirects=True,
-            **kwargs,
-        )
-
-    return httpx.AsyncClient(
-        verify=False,
-        trust_env=True,
-        follow_redirects=True,
-        **kwargs,
-    )
 ENV_FILE   = BASE_DIR / ".env"
 CONFIG_JS  = BASE_DIR / "rtl-converter-config.js"
 HOOKS_JS   = BASE_DIR / "rtl-converter-hooks.js"
@@ -117,6 +83,53 @@ def load_env() -> dict:
     if not ENV_FILE.exists():
         return {}
     return {k: v for k, v in dotenv_values(ENV_FILE).items() if v is not None}
+
+
+# ── HTTP 클라이언트 팩토리 ────────────────────────────────────
+def make_client(**kwargs) -> httpx.AsyncClient:
+    """
+    httpx 비동기 클라이언트 생성.
+
+    프록시 정책 — 명시적 opt-in 만 허용:
+      .env 의 OUTBOUND_PROXY=http://proxy:port 가 설정된 경우에만 그 프록시 사용.
+      미설정 시 직접 연결 (사내 인트라넷 LLM 서버는 프록시 경유 불필요).
+
+    ※ trust_env / 시스템 프록시 자동 감지는 의도적으로 사용하지 않습니다.
+       사내 환경에서 OS 가 외부망용 프록시를 광고하는 경우, 인트라넷 LLM 서버
+       요청까지 그 프록시로 우회되어 407(Proxy Authentication Required) 발생.
+       프록시가 정말 필요한 환경이라면 .env 에 OUTBOUND_PROXY 를 명시하세요.
+
+    ⚠️  TLS 검증 — verify=False 로 고정.
+    ────────────────────────────────────────────────────
+    이 도구는 **사내 인트라넷 LLM 서버 전용**입니다.
+    사내 환경의 자체 서명 인증서 / 사설 CA 가 다양해 일관된 검증이 어렵고,
+    사내망 자체가 신뢰 경계로 동작하므로 TLS 인증서 검증은 사용하지 않습니다.
+    이 동작은 의도적이며 변경 대상이 아닙니다.
+
+    절대 다음 용도로 사용하지 마세요:
+      - 공인 인터넷 LLM 서비스(OpenAI / Anthropic 등) 직접 연결
+      - 프로덕션 외부 서비스 호출
+      - 신뢰 경계 밖(외부망)으로 나가는 요청
+    """
+    proxy_url = load_env().get('OUTBOUND_PROXY')
+
+    if proxy_url:
+        log.info(f"[http] OUTBOUND_PROXY 사용: {proxy_url}")
+        return httpx.AsyncClient(
+            verify=False,            # 사내망 전용 — 고정 (위 docstring 참조)
+            proxy=proxy_url,
+            trust_env=False,         # 환경변수 프록시 자동 적용 차단
+            follow_redirects=True,
+            **kwargs,
+        )
+
+    return httpx.AsyncClient(
+        verify=False,                # 사내망 전용 — 고정 (위 docstring 참조)
+        trust_env=False,             # 시스템/환경변수 프록시 자동 감지 차단 (407 회귀 방지)
+        follow_redirects=True,
+        **kwargs,
+    )
+
 
 # ── 로그 저장 ─────────────────────────────────────────────────
 def append_log(entry: dict) -> int:
@@ -372,8 +385,18 @@ async def lint_code(body: LintRequest):
                 return {"ok": True, "errors": [], "warnings": [],
                         "note": "clang++ 미설치 — lint 건너뜀"}
             linter = "clang++"
-            args   = ["--syntax-only", "-std=c++17",
-                      "-I/usr/include/systemc", tmp_path]
+            # SystemC 헤더 경로: 환경변수 SYSTEMC_INCLUDE (콜론 구분 다중 경로 지원)
+            # 예) SYSTEMC_INCLUDE=/opt/systemc/include:/usr/local/systemc/include
+            # 미설정 시 표준 경로(/usr/include/systemc) 사용
+            sysc_paths = (load_env().get("SYSTEMC_INCLUDE")
+                          or os.environ.get("SYSTEMC_INCLUDE")
+                          or "/usr/include/systemc")
+            include_args = []
+            for p in sysc_paths.split(":"):
+                p = p.strip()
+                if p:
+                    include_args.extend(["-I", p])
+            args = ["--syntax-only", "-std=c++17", *include_args, tmp_path]
         else:
             if _which("verible-verilog-syntax"):
                 linter = "verible-verilog-syntax"
@@ -453,7 +476,28 @@ async def api_auto_run():
 
 
 @app.get("/api/poll")
-async def api_poll():
+async def api_poll(wait: float = 0.0):
+    """
+    명령 큐에서 명령을 꺼냄.
+
+    - wait=0 (기본): 즉시 큐 확인 후 응답 (기존 동작 호환)
+    - wait>0      : long-poll 모드. 큐가 비어있으면 wait 초까지 대기.
+                    명령이 도착하면 즉시 응답, 시간 초과 시 command=null 반환.
+
+    클라이언트는 wait=30 정도로 long-poll 후 응답 즉시 재연결하는 패턴 권장.
+    이렇게 하면 3초 폴링 대비 명령 도착 즉시 처리되며 (<100ms 지연) HTTP 만 사용하므로
+    인트라넷 프록시 호환성도 그대로 유지됩니다.
+    """
+    # 안전 상한: 60초 (브라우저/프록시 idle timeout 회피)
+    wait = max(0.0, min(wait, 60.0))
+
+    if wait > 0 and not _api_cmd_queue:
+        deadline = time.monotonic() + wait
+        while time.monotonic() < deadline:
+            if _api_cmd_queue:
+                break
+            await asyncio.sleep(0.1)  # 100ms 폴링 간격
+
     cmd = _api_cmd_queue.popleft() if _api_cmd_queue else None
     return {"ok": True, "command": cmd}
 
@@ -508,6 +552,9 @@ if __name__ == "__main__":
     log.info(f"  Hook 실행  : POST http://localhost:{PORT}/hook")
     log.info(f"  .env 파일  : {ENV_FILE if ENV_FILE.exists() else '(없음)'}")
     log.info(f"  hooks 파일 : {HOOKS_JS if HOOKS_JS.exists() else '(없음 — rtl-converter-hooks.js 를 이 폴더에 복사하세요)'}")
+    log.info("")
+    log.info("  ⚠️  단일 워커 전용 — _api_cmd_queue 는 in-memory deque 이므로")
+    log.info("       uvicorn --workers > 1 또는 다중 인스턴스 운영 시 명령 큐가 분산됨")
     log.info("")
     log.info("  [API 엔드포인트]")
     log.info(f"  분석 실행  : POST http://localhost:{PORT}/api/auto-run-analysis")

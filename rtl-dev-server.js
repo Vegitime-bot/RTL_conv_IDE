@@ -191,7 +191,17 @@ const server = http.createServer(async (req, res) => {
       // clangd 기반 간이 체크 (clang --syntax-only)
       if (which('clang++')) {
         linter = 'clang++';
-        args   = ['--syntax-only', '-std=c++17', '-I/usr/include/systemc', tmpFile];
+        // SystemC 헤더 경로: 환경변수 SYSTEMC_INCLUDE (콜론 구분 다중 경로 지원)
+        // 예) SYSTEMC_INCLUDE=/opt/systemc/include:/usr/local/systemc/include
+        // 미설정 시 표준 경로(/usr/include/systemc) 사용
+        const sysc_paths = (envVars.SYSTEMC_INCLUDE || process.env.SYSTEMC_INCLUDE
+                            || '/usr/include/systemc');
+        const includeArgs = [];
+        sysc_paths.split(':').forEach(p => {
+          const t = p.trim();
+          if (t) includeArgs.push('-I', t);
+        });
+        args = ['--syntax-only', '-std=c++17', ...includeArgs, tmpFile];
       } else {
         cleanup();
         res.writeHead(200, {'Content-Type':'application/json'});

@@ -3,6 +3,12 @@ services:
     build: .
     image: rtl-converter:latest
     container_name: rtl-converter
+    # ⚠️  단일 컨테이너 / 단일 워커로만 운영하세요.
+    # /api/auto-run-* 명령 큐가 in-memory deque 이므로 replicas > 1 또는
+    # uvicorn --workers > 1 설정 시 외부 자동화 명령이 손실/오작동합니다.
+    # 부하 분산이 필요하면 nginx 앞단 / 별도 큐 시스템(Redis 등)을 도입하세요.
+    deploy:
+      replicas: 1
     ports:
       - "${PORT:-8080}:8080"
     volumes:

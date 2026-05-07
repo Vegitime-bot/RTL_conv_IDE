@@ -8,17 +8,34 @@ Algorithm / μArch 문서 변경을 기반으로 Verilog/SystemVerilog 또는 Sy
 ## 파일 구성
 
 ```
-rtl_algo_converter.html    메인 앱 (단일 HTML — 이것 하나로 동작)
-rtl-dev-server.js          Node.js 개발 서버 (LLM 프록시 + lint 엔드포인트)
-rtl-converter-config.js    동작 튜닝 설정 파일
-env.example                .env 템플릿 (→ .env로 복사 후 작성)
+rtl_algo_converter.html      메인 앱 (HTML + 인라인 JS)
+js/                          분리된 JS 모듈
+  prompts.js                   출력 언어 + UARCH_TABLE_RULES + LANG_CFG
+  llm-client.js                callLLM + 로그 함수
+  server-connection.js         서버 감지 + long-poll + .env 부트스트랩
+
+rtl-dev-server.js            Node.js 개발 서버 (포트 3000) — 로컬 개발용
+rtl_server.py                Python FastAPI 서버 (포트 8080) — 운영용
+Dockerfile                   운영 이미지 빌드 (Python 서버)
+docker-compose.yml           운영 배포 정의
+requirements.txt             Python 의존성
+
+rtl-converter-config.js      동작 튜닝 설정 파일 (양 서버 공유)
+rtl-converter-hooks.js       Hook 정의 (선택, 양 서버 공유)
+env.example                  .env 템플릿 (→ .env로 복사 후 작성)
 ```
+
+> **서버는 두 개입니다.** 동일한 엔드포인트를 Node.js와 Python FastAPI가 각각 제공합니다. 로컬 개발은 Node.js, 운영 배포는 Docker(Python)를 사용하세요. 브라우저는 살아있는 쪽을 자동 감지합니다.
+
+> **JS 모듈 분리:** 메인 HTML 의 inline `<script>` 블록을 기능 단위(시스템 프롬프트 / LLM 클라이언트 / 서버 통신)로 끊어서 `js/` 하위로 분리했습니다. 글로벌 스코프 공유는 그대로 (모듈 시스템 미사용 — 단순 script tag 분할). 동기 로드 순서로 원래 inline 코드와 동일하게 동작합니다.
 
 ---
 
 ## 빠른 시작
 
-### 1. 환경 설정
+### A. 로컬 개발 (Node.js dev 서버)
+
+#### 1. 환경 설정
 
 ```bash
 cp env.example .env
@@ -32,7 +49,7 @@ API_KEY=sk-...                        # API Key (없으면 빈칸)
 DEFAULT_MODEL=your-model-name         # 기본 모델명
 ```
 
-### 2. dev 서버 실행
+#### 2. dev 서버 실행
 
 ```bash
 node rtl-dev-server.js
@@ -40,10 +57,48 @@ node rtl-dev-server.js
 
 브라우저에서 `http://localhost:3000` 접속.
 
-### 3. 직접 열기 (dev 서버 없이)
+#### 3. 직접 열기 (dev 서버 없이)
 
-`rtl_algo_converter.html`을 브라우저에서 직접 열어도 동작합니다.  
-이 경우 `.env` 자동 로드, LLM 로그 저장, lint 검사 기능은 사용 불가합니다.
+`rtl_algo_converter.html`을 브라우저에서 직접 열어도 UI는 동작합니다.  
+이 경우 `localhost:8080` 으로 fallback ping을 시도하므로, Docker 운영 서버가 떠 있으면 그쪽에 연결됩니다. 둘 다 없으면 `.env` 자동 로드, LLM 프록시(CORS 우회), 로그 저장, lint 검사는 사용 불가합니다.
+
+---
+
+### B. 운영 배포 (Docker / Python FastAPI)
+
+#### 1. 환경 설정
+
+```bash
+cp env.example .env
+# .env 편집
+```
+
+#### 2. Docker 실행
+
+```bash
+docker compose up -d
+```
+
+브라우저에서 `http://localhost:8080` 접속. (포트는 `docker-compose.yml`의 `PORT` 환경변수로 변경 가능)
+
+#### 3. 외부 시스템에서 자동 변환 트리거 (선택)
+
+운영 서버는 외부 자동화 시스템에서 변환을 트리거할 수 있는 명령 큐 API를 제공합니다.
+
+```bash
+# 분석만 실행
+curl -X POST http://your-host:8080/api/auto-run-analysis
+
+# RTL 변환만 실행
+curl -X POST http://your-host:8080/api/auto-run-convert
+
+# 분석 + 변환 전체 실행
+curl -X POST http://your-host:8080/api/auto-run
+```
+
+브라우저가 열려있는 상태에서 3초 간격으로 `/api/poll` 폴링을 통해 명령을 받아 자동 실행합니다. CI/CD 또는 사내 자동화 시스템과 연동할 때 사용합니다.
+
+> **주의:** 명령 큐는 서버 메모리(in-memory deque)에 저장되므로 서버 재시작 시 소실됩니다. uvicorn 워커는 반드시 1개로 유지하세요(docker-compose 기본 설정).
 
 ---
 
@@ -126,6 +181,16 @@ verible이 없으면 iverilog로 자동 fallback됩니다.
 apt install clang
 ```
 
+기본 헤더 경로는 `/usr/include/systemc`입니다. 사내 빌드 환경에서 SystemC가 다른 경로에 설치되어 있다면 `.env`에 `SYSTEMC_INCLUDE`를 설정하세요:
+
+```env
+# 단일 경로
+SYSTEMC_INCLUDE=/opt/systemc/include
+
+# 콜론 구분 다중 경로
+SYSTEMC_INCLUDE=/opt/systemc/include:/usr/local/include/tlm
+```
+
 ---
 
 ## 설정 파일 (`rtl-converter-config.js`)
@@ -185,17 +250,93 @@ RTL_CONVERTER_CONFIG = {
 
 ---
 
-## dev 서버 엔드포인트
+## 서버 엔드포인트
 
-| 경로 | 메서드 | 설명 |
-|---|---|---|
-| `/ping` | GET | 서버 상태 확인 |
-| `/env` | GET | `.env` 설정값 반환 |
-| `/config` | GET | `rtl-converter-config.js` 반환 |
-| `/llm-proxy` | POST | LLM 요청 프록시 (`X-Target-URL` 헤더 필요) |
-| `/get-proxy` | GET | GET 요청 프록시 (모델 목록 조회 등) |
-| `/save-log` | POST | LLM 대화 로그 저장 (`rtl_converter_llm_log.json`) |
-| `/lint` | POST | Verilog/SystemC lint 실행 |
+Node.js dev 서버(`:3000`)와 Python FastAPI 서버(`:8080`) 모두 아래 엔드포인트를 제공합니다.
+
+| 경로 | 메서드 | 설명 | Node | Python |
+|---|---|---|:---:|:---:|
+| `/ping` | GET | 서버 상태 확인 | ✓ | ✓ |
+| `/env` | GET | `.env` 설정값 반환 | ✓ | ✓ |
+| `/config` | GET | `rtl-converter-config.js` 반환 | ✓ | ✓ |
+| `/hooks` | GET | `rtl-converter-hooks.js` 반환 |   | ✓ |
+| `/llm-proxy` | POST | LLM 요청 프록시 (`X-Target-URL` 헤더 필요) | ✓ | ✓ |
+| `/get-proxy` | GET | GET 요청 프록시 (모델 목록 조회 등) | ✓ | ✓ |
+| `/save-log` | POST | LLM 대화 로그 저장 | ✓ | ✓ |
+| `/lint` | POST | Verilog/SystemC lint 실행 | ✓ | ✓ |
+| `/hook` | POST | 외부 Webhook 호출 (Slack 등) |   | ✓ |
+| `/api/auto-run-analysis` | POST | 분석 명령 큐에 적재 |   | ✓ |
+| `/api/auto-run-convert` | POST | 변환 명령 큐에 적재 |   | ✓ |
+| `/api/auto-run` | POST | 전체 명령 큐에 적재 |   | ✓ |
+| `/api/poll` | GET | 브라우저용 명령 큐 폴링 |   | ✓ |
+
+> Hook 시스템과 명령 큐 API는 Python 서버 전용입니다. 운영 환경(Docker)에서만 사용 가능.
+
+---
+
+## Hook 시스템 (운영 서버 전용)
+
+분석 완료 또는 변환 완료 시 외부 시스템에 알림을 보낼 수 있습니다. `rtl-converter-hooks.js` 파일을 작성하여 사용합니다.
+
+```js
+// rtl-converter-hooks.js
+window.RTL_CONVERTER_HOOKS = {
+  enabled: true,
+
+  // 변환 완료 시 호출
+  onComplete: {
+    name: 'Slack 알림',
+    url: 'https://hooks.slack.com/services/XXX/YYY/ZZZ',
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    bodyPayload: {
+      text: 'RTL 변환 완료: {fileCount}개 파일',  // {ctx} 치환 변수 지원
+    },
+  },
+
+  // 분석 완료 시 호출 (선택)
+  onAnalysisComplete: { /* ... */ },
+};
+```
+
+`docker-compose.yml`에 `./rtl-converter-hooks.js:/app/rtl-converter-hooks.js:ro` 마운트가 이미 설정되어 있습니다.
+
+---
+
+## 보안 주의사항
+
+- **TLS 검증 — `verify=False` 고정:** Python 서버의 `make_client()` 는 TLS 인증서 검증을 사용하지 않습니다. 사내망 자체가 신뢰 경계로 동작하고 자체 서명 인증서/사설 CA 가 다양해 일관된 검증이 어렵기 때문이며, 의도된 설정입니다. **공인 외부 LLM 서버에 직접 연결하는 용도로 사용하지 마세요.** 인트라넷 사내 LLM 전용입니다.
+- **API Key 보호:** `.env`는 docker-compose에서 `:ro`(read-only) 마운트로 컨테이너에 전달됩니다. 이미지에는 포함되지 않습니다.
+- **CORS:** 두 서버 모두 `Access-Control-Allow-Origin: *`로 동작합니다. 인트라넷 환경 가정이며, 외부 노출 시 nginx 프록시로 origin 제한을 추가하세요(docker-compose.yml의 nginx 섹션 참조).
+- **명령 큐 인증 없음:** `/api/auto-run-*` 엔드포인트는 인증을 거치지 않습니다. 외부 노출 시 nginx에서 IP 제한 또는 Basic Auth를 추가하세요.
+
+---
+
+## 아웃바운드 프록시 정책
+
+LLM 서버로 가는 요청은 **명시적 opt-in 방식**으로만 프록시를 사용합니다.
+
+- 시스템 프록시 / `HTTP_PROXY` 환경변수는 **자동으로 적용되지 않습니다.** (사내 OS 가 외부망용 프록시를 광고하는 경우, 인트라넷 LLM 서버 요청까지 그 프록시로 우회되어 407 에러 발생하는 회귀 방지)
+- 정말 프록시 경유가 필요하면 `.env` 의 `OUTBOUND_PROXY` 에 명시:
+
+```env
+OUTBOUND_PROXY=http://proxy.company.com:8080
+# 인증 필요한 경우:
+OUTBOUND_PROXY=http://user:pass@proxy.company.com:8080
+```
+
+### 트러블슈팅 — 407 Proxy Authentication Required
+
+```
+"HTTP/1.1 407 authenticationrequired"
+INFO: GET /get-proxy HTTP/1.1 → 407
+```
+
+이 오류는 LLM 서버 요청이 의도치 않게 회사 외부망 프록시를 경유할 때 발생합니다. 진단 절차:
+
+1. `.env` 의 `OUTBOUND_PROXY` 값을 확인 — 잘못된 프록시가 설정돼 있으면 비우세요.
+2. 위 항목이 비어있는데도 407 이 나면 사내 환경이 시스템 프록시를 광고하고 있는 것입니다. 현재 버전은 자동 적용을 차단하지만, 만약 옛날 버전을 쓰고 있다면 최신 `rtl_server.py` 로 업데이트하세요.
+3. 사내 LLM 서버는 보통 **프록시 경유 없이 직접 도달 가능**합니다. `BASE_URL` 도메인이 사내 DNS 로 해석되는지, 방화벽 룰이 직접 연결을 허용하는지 확인하세요.
 
 ---
 

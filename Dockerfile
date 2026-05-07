@@ -22,6 +22,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY rtl_server.py              .
 COPY rtl_algo_converter.html    .
 COPY rtl-converter-config.js    .
+COPY js/                        ./js/
 
 # rtl-converter-hooks.js 는 선택 파일 — 없으면 hook 미사용
 # rtl-converter-hooks.js — 없어도 서버 실행 가능
@@ -32,9 +33,14 @@ RUN touch /app/rtl-converter-hooks.js.placeholder
 
 # ── 포트 ─────────────────────────────────────────────────────
 ENV PORT=8080
-EXPOSE 3000
+EXPOSE 8080
 
 # ── 실행 ─────────────────────────────────────────────────────
+# CRITICAL: --workers 1 필수
+# rtl_server.py 의 _api_cmd_queue 는 in-memory deque 이므로 multi-worker 환경에서
+# 외부 자동화(/api/auto-run-*) 명령이 어느 워커로 갈지 불확정해집니다.
+# 운영 환경에서 여러 인스턴스가 필요하면 nginx upstream 으로 전체 서버 단위 분산하세요.
 CMD ["python", "-m", "uvicorn", "rtl_server:app",\
      "--host", "0.0.0.0", "--port", "8080",\
+     "--workers", "1",\
      "--log-level", "info"]

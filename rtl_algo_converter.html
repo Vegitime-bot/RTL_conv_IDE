@@ -5,14 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>RTL Converter</title>
 <style>
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Space+Grotesk:wght@300;400;500;600&display=swap');
+/* 인트라넷 환경: 외부 CDN 의존 없음. 폰트는 시스템 스택 fallback 사용.
+   사용자 OS에 JetBrains Mono / Space Grotesk가 설치되어 있으면 그것을 우선 사용,
+   없으면 시스템 기본 폰트로 자동 fallback (한글 포함). */
 :root{
   --bg:#0d0f14;--surface:#161c28;--s2:#1e2736;
   --border:#2e3d54;--b2:#405270;
   --accent:#6ab8ff;--purple:#b090e8;
   --green:#4ee89e;--red:#ff7d87;--amber:#ffc340;
   --text:#f0f4fc;--text2:#bccce0;--text3:#8fa8c0;
-  --mono:'JetBrains Mono',monospace;--sans:'Space Grotesk',sans-serif;
+  --mono:'JetBrains Mono', ui-monospace, 'SF Mono', 'Cascadia Mono', Consolas, 'Liberation Mono', 'Courier New', monospace;
+  --sans:'Space Grotesk', 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans KR', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
 }
 *{box-sizing:border-box;margin:0;padding:0;}
 body{background:var(--bg);color:var(--text);font-family:var(--sans);height:100vh;display:flex;flex-direction:column;overflow:hidden;}
@@ -828,11 +831,16 @@ textarea::placeholder{color:var(--text3);}
 
     <!-- 하단 버튼 -->
     <div style="padding:10px 18px;border-top:1px solid var(--border);background:var(--s2);
-      display:flex;gap:8px;justify-content:flex-end;flex-shrink:0;">
-      <button class="btn btn-g" style="font-size:11px;padding:5px 14px;"
-        onclick="preClarifySkip()">건너뛰고 변환</button>
-      <button class="btn btn-p" style="font-size:11px;padding:5px 16px;background:var(--purple);border-color:var(--purple);"
-        onclick="preClarifyProceed()">✓ 답변 완료 → 변환</button>
+      display:flex;gap:8px;justify-content:space-between;flex-shrink:0;">
+      <button id="preClarifyAbortBtn" class="btn btn-g"
+        style="font-size:11px;padding:5px 14px;color:var(--red);border-color:rgba(255,107,117,.3);display:none;"
+        onclick="preClarifyAbort()">■ 중단</button>
+      <div style="display:flex;gap:8px;margin-left:auto;">
+        <button class="btn btn-g" style="font-size:11px;padding:5px 14px;"
+          onclick="preClarifySkip()">건너뛰고 변환</button>
+        <button class="btn btn-p" style="font-size:11px;padding:5px 16px;background:var(--purple);border-color:var(--purple);"
+          onclick="preClarifyProceed()">✓ 답변 완료 → 변환</button>
+      </div>
     </div>
   </div>
 </div>
@@ -849,6 +857,43 @@ textarea::placeholder{color:var(--text3);}
       <button class="btn btn-g" style="font-size:11px;padding:5px 12px;" onclick="document.getElementById('tokenWarnModal').style.display='none'">취소</button>
       <button class="btn btn-g" style="font-size:11px;padding:5px 12px;color:var(--amber);border-color:rgba(255,195,64,.3);" onclick="tokenWarnSequential()">순차 처리로 변환</button>
       <button class="btn btn-p" style="font-size:11px;padding:5px 12px;" onclick="tokenWarnProceed()">단일로 그대로 진행</button>
+    </div>
+  </div>
+</div>
+
+<!-- Missing module 알림 모달 — Lint 결과에 정의되지 않은 module 발견 시 -->
+<div id="missingModuleModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.65);align-items:center;justify-content:center;">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;
+    width:min(640px,94vw);max-height:80vh;display:flex;flex-direction:column;
+    box-shadow:0 20px 60px rgba(0,0,0,.5);overflow:hidden;">
+
+    <div style="padding:12px 18px;border-bottom:1px solid var(--border);background:var(--s2);
+      display:flex;align-items:center;gap:8px;flex-shrink:0;">
+      <span style="font-size:18px;">⚠️</span>
+      <span style="font-family:var(--mono);font-size:13px;font-weight:600;color:var(--amber);">정의되지 않은 module 감지</span>
+      <span id="missingModuleFile" style="font-family:var(--mono);font-size:11px;color:var(--text3);margin-left:auto;"></span>
+    </div>
+
+    <div style="padding:12px 18px;background:rgba(255,195,64,.07);border-bottom:1px solid var(--border);
+      font-family:var(--mono);font-size:11px;color:var(--text2);line-height:1.7;flex-shrink:0;">
+      변환된 코드의 lint 결과에서 <b style="color:var(--amber);">정의되지 않은 module 참조</b>가 발견되었습니다.<br>
+      LLM이 임의로 stub/fake module 을 추가하면 동작이 달라질 수 있어, <b>자동 추가는 수행하지 않습니다.</b><br>
+      엔지니어가 직접 다음 중 하나를 처리하는 것을 권장합니다:<br>
+      <span style="color:var(--text3);margin-left:14px;">• 누락된 module 파일을 Step 1에서 추가로 업로드</span><br>
+      <span style="color:var(--text3);margin-left:14px;">• 해당 module 의 정의가 다른 파일에 있다면 함께 변환에 포함</span><br>
+      <span style="color:var(--text3);margin-left:14px;">• 정말로 stub 이 필요하다면 직접 작성 후 Iteration 으로 통합</span>
+    </div>
+
+    <div id="missingModuleBody" style="flex:1;overflow-y:auto;padding:12px 18px;font-family:var(--mono);font-size:11px;color:var(--text);line-height:1.7;min-height:80px;"></div>
+
+    <div style="padding:10px 18px;border-top:1px solid var(--border);background:var(--s2);
+      display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;flex-shrink:0;">
+      <button class="btn btn-g" style="font-size:11px;padding:5px 12px;color:var(--text3);"
+        onclick="missingModuleResolve('cancel')" title="자동 수정 전체를 건너뛰고 결과 그대로 유지">자동 수정 건너뛰기</button>
+      <button class="btn btn-g" style="font-size:11px;padding:5px 12px;color:var(--amber);border-color:rgba(255,195,64,.3);"
+        onclick="missingModuleResolve('fix-others-only')" title="missing module 오류는 그대로 두고 다른 lint 오류만 자동 수정">다른 오류만 자동 수정</button>
+      <button class="btn btn-g" style="font-size:11px;padding:5px 12px;color:var(--red);border-color:rgba(255,107,117,.3);"
+        onclick="missingModuleResolve('fix-all')" title="LLM에게 module 추가도 시도시킴 (위험 — 동작 달라질 수 있음)">⚠ 모두 자동 수정 시도</button>
     </div>
   </div>
 </div>
@@ -2173,117 +2218,13 @@ function updateBadge(){
 // ── Conversion mode ───────────────────────────────────────
 const convMode = 'single';  // 기본 단일 컨텍스트
 
-// ── 출력 언어 설정 ────────────────────────────────────────
-let _outputLang = 'rtl';  // 'rtl' | 'systemc'
 
-// ── μArch 문서 테이블 해석 규칙 ─────────────────────────
-// μArch 내용을 LLM에 전달할 때 항상 앞에 포함
-const UARCH_TABLE_RULES = `[μArch Document Interpretation Rules]
-The following μArch content may contain plain text and/or encoded table data.
+// ↓ 분리 모듈: js/prompts.js
+</script>
+<script src="js/prompts.js"></script>
+<script>
+// ↑ 분리 모듈: js/prompts.js
 
-Table encoding format:
-  [TABLE n | SCHEMA]: column names of table n
-  [TABLE n | ROW k]: row k of table n, encoded as column=value pairs separated by semicolons
-
-Rules for interpreting tables:
-- Treat tables as the PRIMARY source of factual information over plain text.
-- For questions involving conditions, numbers, criteria, periods, comparisons, or lists — check table rows first.
-- Each row is a complete, independent record.
-- Merged cells have already been expanded into individual rows.
-- Restore these markers before interpreting:
-    <SAME_AS_ABOVE> = same value as the cell above in the same column
-    <SAME_AS_LEFT>  = same value as the cell to the left in the same row
-- If multiple rows match a query, consider ALL relevant rows.
-- Do not guess missing or unclear values.
-- For multiple-choice / checkbox items:
-    A filled/checked/emphasized mark (■ ● ✔ ▶) means SELECTED / TRUE.
-    An empty/unemphasized mark (□ ○ △) means UNSELECTED / FALSE.
-    Judge by mark state only, not by shape.
-`;
-
-
-
-const LANG_CFG = {
-  rtl: {
-    label:        'Verilog / SystemVerilog',
-    badge:        'Verilog / SystemVerilog',
-    fileAccept:   '.v,.sv,.verilog',
-    fileExts:     /\.(v|sv|verilog)$/i,
-    dzHint:       '.v / .sv',
-    modeHint:     '— .v / .sv 파일 · RTL 레벨 변환',
-    expert:       'You are an expert RTL (Verilog/SystemVerilog) engineer.',
-    iterExpert:   'You are an expert RTL (Verilog/SystemVerilog) engineer.',
-    impactExpert: 'You are an expert RTL (Verilog/SystemVerilog) engineer.',
-    commentStyle: '// ALGO: / // UARCH: / // BOTH:',
-    commentIter:  '// ITER:',
-    fileDesc:     'RTL',
-    sampleFile:   'filename.v',
-    construct:    'signal/port/always block/parameter',
-    noFileHint:   'RTL 파일 없음 — Step 1에서 추가하세요',
-    sigLabel:     '=== Module signature:',
-    extractSig:   'verilog',
-  },
-  systemc: {
-    label:        'SystemC (HLS)',
-    badge:        'SystemC / HLS',
-    fileAccept:   '.cpp,.h,.hpp,.cc',
-    fileExts:     /\.(cpp|h|hpp|cc)$/i,
-    dzHint:       '.cpp / .h / .hpp',
-    modeHint:     '— .cpp / .h / .hpp 파일 · HLS/SystemC 레벨 변환',
-    expert:       'You are an expert SystemC/HLS (High-Level Synthesis) engineer.',
-    iterExpert:   'You are an expert SystemC/HLS engineer.',
-    impactExpert: 'You are an expert SystemC/HLS engineer familiar with Verilog RTL concepts.',
-    commentStyle: '// ALGO: / // UARCH: / // BOTH:',
-    commentIter:  '// ITER:',
-    fileDesc:     'SystemC',
-    sampleFile:   'filename.cpp',
-    construct:    'SC_MODULE/port/signal/process/channel/HLS pragma',
-    noFileHint:   'SystemC 파일 없음 — Step 1에서 추가하세요',
-    sigLabel:     '=== SC_MODULE signature:',
-    extractSig:   'systemc',
-  },
-};
-
-function getLang() { return LANG_CFG[_outputLang] || LANG_CFG.rtl; }
-
-function setOutputLang(lang) {
-  _outputLang = lang;
-  const cfg = getLang();
-
-  // 헤더 badge
-  const badge = document.getElementById('langBadge');
-  if (badge) badge.textContent = cfg.badge;
-
-  // 파일 업로드 input accept
-  const rtlIn = document.getElementById('rtlIn');
-  if (rtlIn) rtlIn.accept = cfg.fileAccept;
-
-  // DZ 힌트
-  const dzHint = document.getElementById('dzFileHint');
-  if (dzHint) dzHint.textContent = cfg.dzHint;
-
-  // 모드 힌트
-  const modeHint = document.getElementById('langModeHint');
-  if (modeHint) modeHint.textContent = cfg.modeHint;
-
-  // 파일 확장자 필터 업데이트 → 기존 파일 목록 클리어 안 함 (언어 전환 시 파일 유지)
-  // Diff 패널 헤더 동적 갱신
-  ['algoPanelHdr','uarchPanelHdr'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.textContent = `${cfg.fileDesc} 관련 변경점`;
-  });
-  document.querySelectorAll('.langFileDesc').forEach(el => {
-    el.textContent = cfg.fileDesc;
-  });
-
-  // Step 1 stepbar 버튼 텍스트 업데이트
-  const s0 = document.getElementById('s0');
-  if (s0) s0.querySelector('.sn').nextSibling ? null : null; // 구조 유지
-
-  renderRtl();
-  updateCtxEstimate();
-  dbgLog('INF', `[lang] 출력 언어 전환: ${cfg.label}`, 'inf');
-}
 let _currentRunMode = 'single';  // 실제 실행 모드 (token 초과 시 'sequential'로 변경)
 
 function autoCalcNumCtx() {
@@ -2342,6 +2283,7 @@ function updateCtxEstimate() {
 
   // ── 현재 스텝에 맞는 계산 기준 선택 ─────────────────────
   let usedTok, rawRequired, modeTag, baseLabel;
+  let isRtlStep = false;   // RTL 변환 단계 여부 — true 면 calcTotalConvTokens 단일 표시
 
   if (cur === 2 && calc.algoDocTok > 0) {
     usedTok     = calc.algoDocTok;
@@ -2354,10 +2296,9 @@ function updateCtxEstimate() {
     modeTag     = `<span style="color:var(--purple);font-size:10px;">[μArch Diff]</span>`;
     baseLabel   = `AS(${calc.uarchAsTok.toLocaleString()}) + TO(${calc.uarchToTok.toLocaleString()}) = ~${calc.uarchDocTok.toLocaleString()} tok`;
   } else if (rtlFiles.length) {
-    usedTok     = calc.sumFileTok;  // 단일 컨텍스트 — 전체 합산
-    rawRequired = (usedTok + calc.impactTok) * 2 + calc.thinkingBuf;
-    modeTag     = `<span style="color:var(--purple);font-size:10px;">[단일]</span>`;
-    baseLabel   = `전체 ${calc.fileCount}개 합산 ~${calc.sumFileTok.toLocaleString()} tok`;
+    isRtlStep = true;
+    modeTag   = `<span style="color:var(--purple);font-size:10px;">[단일]</span>`;
+    baseLabel = `전체 ${calc.fileCount}개 합산 ~${calc.sumFileTok.toLocaleString()} tok`;
   } else {
     // 아직 파일 없음
     el.innerHTML = '<span style="color:var(--text3);font-size:11px;">파일 로드 후 토큰 추정</span>';
@@ -2367,55 +2308,71 @@ function updateCtxEstimate() {
   // ── 표시 (예상 컨텍스트 토큰 수만 출력) ──────────────────
   el.style.color = 'var(--text2)';
 
-  const thinkingHint = calc.thinkingBuf > 0
-    ? `<span style="color:var(--purple);font-size:10px;"> + thinking ~${calc.thinkingBuf.toLocaleString()}</span>`
-    : '';
-  const uarchFullHint = calc.newUarchTok > 0
-    ? `<span style="color:var(--green);font-size:10px;"> + μArch전문 ~${calc.newUarchTok.toLocaleString()}</span>`
-    : '';
+  // RTL 변환 단계: calcTotalConvTokens 한 가지로 통일 표시.
+  //   - 모달과 동일한 함수, 동일한 시점 기준값을 _lastConvCalc 에 캐시해서
+  //     화면과 모달의 수치가 항상 일치하도록 보장.
+  if (isRtlStep) {
+    const tc    = calcTotalConvTokens();
+    window._lastConvCalc = tc;          // 모달이 재계산 없이 이 값을 사용
 
-  // Algo/μArch Diff 단계에서 RTL 변환 참고
-  const rtlHint = (cur === 1 || cur === 2) && rtlFiles.length
-    ? `<br><span style="font-size:10px;color:var(--text3);">RTL 변환 시 전체합산: ~${calc.sumFileTok.toLocaleString()} tok</span>`
-    : '';
+    const over  = tc.total >= TOKEN_WARN_THRESHOLD;
+    const large = isLargeCxtModel();
+    const color = (over && !large) ? 'var(--red)' : over ? 'var(--green)' : 'var(--text3)';
+    const warn  = (over && !large)
+      ? `  <b style="color:var(--red);">⚠ 128K 초과 — 변환 전 순차 처리 여부 안내</b>`
+      : (over && large)
+      ? `  <span style="color:var(--green);">✓ largeCxtModel — 단일 실행 가능</span>`
+      : '';
 
-  // RTL 단계에서 전체 변환 예상 토큰 표시
-  const totalConvHint = (cur !== 1 && cur !== 2) && rtlFiles.length
-    ? (() => {
-        const tc    = calcTotalConvTokens();
-        const over  = tc.total >= TOKEN_WARN_THRESHOLD;
-        const large = isLargeCxtModel();
-        const color = (over && !large) ? 'var(--red)' : over ? 'var(--green)' : 'var(--text3)';
-        const warn  = (over && !large)
-          ? `  <b style="color:var(--red);">⚠ 128K 초과 — 변환 전 순차 처리 여부 안내</b>`
-          : (over && large)
-          ? `  <span style="color:var(--green);">✓ largeCxtModel — 단일 실행 가능</span>`
-          : '';
-        return `<br><span style="font-size:10px;color:${color};">전체 변환 예상: ~${tc.total.toLocaleString()} tok${warn}</span>`;
-      })()
-    : '';
+    // 1행: 입력 기준 (전체 합산)
+    // 2행: 출력+오버헤드 포함 전체 호출 토큰
+    el.innerHTML =
+      `${modeTag} ${baseLabel}` +
+      `<br><span style="font-size:10px;color:${color};">전체 변환 예상: ~${tc.total.toLocaleString()} tok${warn}</span>`;
 
-  const reqLabel = `  <span style="color:var(--text3);">→ 예상 필요: ~${Math.ceil(rawRequired).toLocaleString()} tok</span>`;
-
-  el.innerHTML = `${modeTag} ${baseLabel}${thinkingHint}${uarchFullHint}${reqLabel}${rtlHint}${totalConvHint}`;
-
-  // 청크 분할 예고 (RTL 단계)
-  if (cur !== 1 && cur !== 2 && rtlFiles.length) {
+    // 청크 분할 예고
     const budget     = getTokenBudget();
     const splitFiles = rtlFiles.filter(f => estimateTokens(f.content) > budget * 0.7);
     if (splitFiles.length > 0)
       dbgLog('INF', `module 분할 예상: ${splitFiles.map(f=>f.name).join(', ')}`, 'inf');
+    return;
   }
+
+  // Algo/μArch Diff 단계: rawRequired 추정 그대로 (이 단계는 단일 호출 사이즈 추정이 의미 있음)
+  // 캐시는 RTL 단계 진입 시에만 유효 — 다른 단계로 이동하면 비워서 stale 값이 모달에 새지 않게.
+  window._lastConvCalc = null;
+
+  const thinkingHint = calc.thinkingBuf > 0
+    ? `<span style="color:var(--purple);font-size:10px;"> + thinking ~${calc.thinkingBuf.toLocaleString()}</span>`
+    : '';
+  const rtlHint = rtlFiles.length
+    ? `<br><span style="font-size:10px;color:var(--text3);">RTL 변환 시 전체합산: ~${calc.sumFileTok.toLocaleString()} tok</span>`
+    : '';
+  const reqLabel = `  <span style="color:var(--text3);">→ 예상 필요: ~${Math.ceil(rawRequired).toLocaleString()} tok</span>`;
+
+  el.innerHTML = `${modeTag} ${baseLabel}${thinkingHint}${reqLabel}${rtlHint}`;
 }
 
 // ── 중단 / 재시작 제어 ───────────────────────────────────
 let _batchAborted = false;
+// 변환 진행 중인 callLLM/lint fetch를 즉시 abort 시키기 위한 컨트롤러.
+// _runBatchNow 시작 시 새로 생성, stopBatch() 가 abort() 호출.
+let _batchAbortController = null;
 
 function stopBatch() {
   _batchAborted = true;
-  monSetStatus('중단 요청됨 — 현재 파일 완료 후 정지', 'var(--amber)');
-  dbgLog('INF', '사용자가 변환 중단 요청', 'inf');
+
+  // 진행 중인 callLLM / fetch 즉시 abort — stuck 상태에서도 빠져나옴
+  if (_batchAbortController) {
+    try { _batchAbortController.abort(); } catch(_) {}
+    _batchAbortController = null;
+  }
+
+  monSetStatus('중단됨 — 진행 중인 LLM 호출 취소됨', 'var(--amber)');
+  dbgLog('INF', '사용자가 변환 중단 요청 — 진행 중인 LLM 호출 abort', 'inf');
   document.getElementById('stopBtn').style.display = 'none';
+  showResumeBtn();   // 재시도 가능하도록 ↺ 이어서 변환 노출
+
   const _nb = document.getElementById('nextBtn');
   if (_nb) { _nb.disabled = false; _nb.textContent = _nb.dataset.origText || '▶ 재변환'; }
 }
@@ -2524,6 +2481,10 @@ async function _runBatchNow(mode = 'single') {
 
   goStep(4); renderResTabs();
   _batchAborted = false;
+
+  // 진행 중인 LLM 호출을 stopBatch() 가 즉시 abort 할 수 있도록 새 컨트롤러 발급
+  _batchAbortController = new AbortController();
+
   hideResumeBtn();
   logImpactUsage();
   // 변환 중 nextBtn freeze
@@ -2539,272 +2500,13 @@ async function _runBatchNow(mode = 'single') {
   }
 }
 
-// ── LLM 대화 로그 저장 ────────────────────────────────────
-const llmLog = [];
-// LOG_SERVER: devUrl('/save-log') 를 직접 사용 (포트 동적 감지 보장)
 
-// REQUEST 단계 즉시 기록 (응답 여부와 무관) — fire-and-forget
-function saveReqLog(entry) {
-  llmLog.push(entry);
-  if (!window._devServerAvailable) return;  // dev 서버 없으면 메모리만
-  // await 없이 즉시 반환 — pending 상태에서도 기록 보장
-  fetch(devUrl('/save-log'), {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify(entry),
-  }).then(res => {
-    if (res.ok) res.json().then(d =>
-      dbgLog('INF', `[req-log] #${d.count} 저장 → ${d.file}`, 'inf')
-    );
-  }).catch(e => {
-    dbgLog('INF', `[req-log] 저장 실패 (${e.message}) — 메모리 누적 (${llmLog.length}건)`, 'inf');
-  });
-}
+// ↓ 분리 모듈: js/llm-client.js
+</script>
+<script src="js/llm-client.js"></script>
+<script>
+// ↑ 분리 모듈: js/llm-client.js
 
-// RESPONSE 완료 후 기존 REQ 항목을 업데이트해서 저장
-async function saveLlmLog(entry) {
-  // 메모리 로그에서 같은 req_id 찾아 업데이트
-  const existing = llmLog.find(e => e.req_id && e.req_id === entry.req_id);
-  if (existing) {
-    Object.assign(existing, entry);
-  } else {
-    llmLog.push(entry);
-  }
-  try {
-    const res = await fetch(devUrl('/save-log'), {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(entry),
-    });
-    if (res.ok) {
-      const d = await res.json();
-      dbgLog('INF', `[res-log] #${d.count} 저장 → ${d.file}`, 'inf');
-    } else {
-      dbgLog('INF', `[res-log] 서버 응답 오류 HTTP ${res.status}`, 'inf');
-    }
-  } catch(e) {
-    dbgLog('INF', `[res-log] dev 서버 없음 — 메모리 누적 (${llmLog.length}건)`, 'inf');
-  }
-}
-
-function downloadLlmLog() {
-  if (!llmLog.length) { alert('저장된 LLM 대화 로그가 없습니다.'); return; }
-  const blob = new Blob([JSON.stringify(llmLog, null, 2)], {type: 'application/json'});
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'rtl_converter_llm_log.json';
-  a.click();
-  URL.revokeObjectURL(a.href);
-}
-
-// ── 공통 fetch (streaming) ────────────────────────────────
-//
-// mode 별 파라미터 전략:
-//  'rtl'     — RTL 코드 변환 (큰 출력, 엄격한 temperature/top_p)
-//  'json'    — 구조화 분석 (중간 출력, 약간 유연한 top_p)
-//  'json-sm' — 단일 항목 JSON (소형 출력)
-//
-async function callLLM(host, model, systemMsg, userMsg, onChunk, mode = 'rtl', signal = null) {
-  const inputTok = estimateTokens(systemMsg + userMsg);
-  const apiKey   = document.getElementById('oApiKey')?.value.trim() || '';
-  const endpoint = host.replace(/\/+$/, '') + '/chat/completions';
-
-  // ── 파라미터: use=true인 것만 body에 포함 ──────────────
-  const temperature = getParam('temperature', mode, inputTok);
-  const seed        = getParam('seed',        mode, inputTok);
-  const top_p       = getParam('top_p',       mode, inputTok);
-  const thinkBuf    = getThinkingBuf(); // 계산용 (전송 안 함)
-
-
-  // dev 서버 연결 시 /llm-proxy 경유, 미연결 시 브라우저 직접 연결
-  const useProxy = window._devServerAvailable;
-  const fetchUrl = useProxy ? devUrl('/llm-proxy') : endpoint;
-
-  const headers = { 'Content-Type': 'application/json' };
-  if (apiKey)   headers['Authorization'] = `Bearer ${apiKey}`;
-  if (useProxy) headers['X-Target-URL']  = endpoint;
-
-  // OpenAI Compatible 표준 필드만 body에 포함
-  const bodyObj = {
-    model,
-    stream:   true,
-    messages: [
-      { role: 'system', content: systemMsg },
-      { role: 'user',   content: userMsg   }
-    ]
-  };
-  if (temperature !== undefined) bodyObj.temperature = temperature;
-  if (top_p       !== undefined) bodyObj.top_p       = top_p;
-  if (seed !== undefined && seed !== -999) bodyObj.seed = seed;
-
-  // ── REQUEST 로그 즉시 기록 (응답 전 — pending 진단용) ──
-  const req_id   = `req-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
-  const t_req    = Date.now();
-  const logParts = [`[callLLM:${mode}]`, `input:~${inputTok}tok`];
-  if (temperature !== undefined) logParts.push(`temperature:${temperature}`);
-  if (top_p       !== undefined) logParts.push(`top_p:${top_p}`);
-  if (seed !== undefined && seed !== -999) logParts.push(`seed:${seed}`);
-  if (thinkBuf > 0) logParts.push(`thinking_buf:${thinkBuf}(calc_only)`);
-  dbgLog('REQ', `${logParts.join(' ')}  req_id:${req_id}`, 'req');
-
-  // fetch 직전에 파일로 기록 (응답 안 와도 요청 내역 보존)
-  saveReqLog({
-    req_id,
-    status:     'REQUEST',
-    timestamp:  new Date(t_req).toISOString(),
-    endpoint,
-    model,
-    mode,
-    params: {
-      ...(temperature !== undefined && { temperature }),
-      ...(top_p       !== undefined && { top_p }),
-      ...(seed !== undefined && seed !== -999 && { seed }),
-    },
-    prompt_tokens_est: inputTok,
-    request: {
-      system: systemMsg.slice(0, 300) + (systemMsg.length > 300 ? '…' : ''),
-      user_preview: userMsg.slice(0, 500) + (userMsg.length > 500 ? '…' : ''),
-      user_tokens_est: estimateTokens(userMsg),
-    },
-  });
-
-  let t_first_byte = null;
-  const res = await fetch(fetchUrl, {
-    method:  'POST',
-    headers,
-    body:    JSON.stringify(bodyObj),
-    ...(signal ? { signal } : {})
-  });
-  const t_http = Date.now();
-  dbgLog('INF', `[callLLM] HTTP ${res.status} — ${t_http - t_req}ms  req_id:${req_id}`, 'inf');
-
-  if (!res.ok) {
-    const errText = await res.text().catch(() => '');
-    dbgLog('ERR', `[callLLM] HTTP ${res.status} — ${errText.slice(0,200)}`, 'err');
-    let errMsg = `HTTP ${res.status}`;
-    try { errMsg = JSON.parse(errText).error?.message || errMsg; } catch (_) {}
-    throw new Error(errMsg);
-  }
-
-  // Content-Type 확인 — non-streaming JSON 응답 fallback
-  const ct = res.headers.get('content-type') || '';
-  if (!ct.includes('text/event-stream') && !ct.includes('application/stream')) {
-    // 일부 서버는 stream:true 요청에도 일반 JSON으로 응답
-    const data = await res.json().catch(() => null);
-    if (data) {
-      const content = data.choices?.[0]?.message?.content
-                   || data.choices?.[0]?.delta?.content
-                   || '';
-      const reason  = data.choices?.[0]?.finish_reason || '';
-      dbgLog('INF', `[callLLM] non-streaming 응답 감지 (${ct}) — ${content.length}자`, 'inf');
-      if (content) {
-        if (onChunk) onChunk(content);
-        await saveLlmLog({ timestamp: new Date().toISOString(), endpoint, model, mode,
-          finish_reason: reason, request: { system: systemMsg, user: userMsg },
-          response: content, stats: { prompt_tokens_est: inputTok, response_tokens_est: Math.round(content.length/3.5) }
-        });
-        return { raw: content, finish: reason };
-      }
-    }
-    dbgLog('ERR', `[callLLM] non-streaming 응답에서 content 없음`, 'err');
-    throw new Error('응답이 비어 있습니다 (non-streaming)');
-  }
-
-  const reader  = res.body.getReader();
-  const decoder = new TextDecoder();
-  let full   = '';
-  let finish = '';
-  let buf    = '';   // 청크 경계에 걸린 불완전 라인 누적
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    if (!t_first_byte) {
-      t_first_byte = Date.now();
-      dbgLog('INF', `[callLLM] 첫 청크 수신 — ${t_first_byte - t_req}ms  req_id:${req_id}`, 'inf');
-    }
-    buf += decoder.decode(value, { stream: true });
-
-    // 완전한 라인 단위로 처리
-    const lines = buf.split('\n');
-    buf = lines.pop() ?? '';   // 마지막 불완전 라인은 다음 청크로
-
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed === 'data: [DONE]') continue;
-
-      // SSE 형식: "data: {...}"
-      const jsonStr = trimmed.startsWith('data: ')
-        ? trimmed.slice(6)
-        : trimmed;   // 일부 서버는 data: 없이 바로 JSON
-
-      try {
-        const json   = JSON.parse(jsonStr);
-        const delta  = json.choices?.[0]?.delta?.content ?? '';
-        const reason = json.choices?.[0]?.finish_reason;
-        if (delta) {
-          full += delta;
-          if (onChunk) onChunk(full);
-        }
-        if (reason) finish = reason;
-      } catch (_) {
-        // JSON 파싱 실패 라인은 무시 (헤더, 빈 줄 등)
-      }
-    }
-  }
-
-  // 버퍼 잔여 처리
-  if (buf.trim() && buf.trim() !== 'data: [DONE]') {
-    const jsonStr = buf.trim().startsWith('data: ') ? buf.trim().slice(6) : buf.trim();
-    try {
-      const json  = JSON.parse(jsonStr);
-      const delta = json.choices?.[0]?.delta?.content ?? '';
-      if (delta) { full += delta; if (onChunk) onChunk(full); }
-      const reason = json.choices?.[0]?.finish_reason;
-      if (reason) finish = reason;
-    } catch (_) {}
-  }
-
-  if (!full) {
-    // abort된 경우는 조용히 AbortError를 다시 throw해 상위에서 처리
-    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-    dbgLog('ERR', `[callLLM] 응답이 비어 있음. mode:${mode} endpoint:${endpoint}`, 'err');
-    throw new Error('응답이 비어 있습니다 — 서버 로그 또는 콘솔을 확인하세요');
-  }
-
-  // LLM 대화 로그 기록 (REQUEST 로그를 RESPONSE로 업데이트)
-  const t_done = Date.now();
-  dbgLog('RES', `[callLLM] 완료 — 전체:${t_done - t_req}ms  첫청크:${t_first_byte ? t_first_byte - t_req : '-'}ms  req_id:${req_id}`, 'res');
-  await saveLlmLog({
-    req_id,
-    status:     'RESPONSE',
-    timestamp:  new Date().toISOString(),
-    endpoint,   model,   mode,
-    timing: {
-      req_at:         new Date(t_req).toISOString(),
-      http_ms:        t_http - t_req,
-      first_byte_ms:  t_first_byte ? t_first_byte - t_req : null,
-      total_ms:       t_done - t_req,
-    },
-    params: {
-      ...(temperature !== undefined && { temperature }),
-      ...(top_p       !== undefined && { top_p }),
-      ...(seed !== undefined && seed !== -999 && { seed }),
-    },
-    finish_reason: finish,
-    request:  { system: systemMsg, user: userMsg },
-    response: full,
-    stats: {
-      prompt_chars:        (systemMsg + userMsg).length,
-      response_chars:      full.length,
-      prompt_tokens_est:   Math.round((systemMsg + userMsg).length / 3.5),
-      response_tokens_est: Math.round(full.length / 3.5),
-    }
-  });
-
-  return { raw: full, finish };
-}
 
 // ════════════════════════════════════════════════════════
 // 전체 예상 토큰 계산 (변환 전 경고용)
@@ -2829,14 +2531,22 @@ function calcTotalConvTokens() {
 
   const total = ctxTok + algoRawTok + rtlTok + outRtlTok + overhead;
 
+  // breakdown — total 의 모든 구성요소를 빠짐없이 표시 (합 = total)
+  const breakdown = [
+    { label: 'Impact/μArch 컨텍스트', tok: ctxTok },
+  ];
+  if (algoRawTok > 0) {
+    breakdown.push({ label: 'Algo diff 원문',  tok: algoRawTok });
+  }
+  breakdown.push(
+    { label: `Origin ${getLang().fileDesc} 합산`, tok: rtlTok },
+    { label: `예상 출력 ${getLang().fileDesc} (×1.1)`, tok: outRtlTok },
+    { label: '프롬프트 오버헤드',     tok: overhead },
+  );
+
   return {
     ctxTok, algoRawTok, rtlTok, outRtlTok, overhead, total,
-    breakdown: [
-      { label: 'Impact/μArch 컨텍스트', tok: ctxTok },
-      { label: `Origin ${getLang().fileDesc} 합산`, tok: rtlTok },
-      { label: `예상 출력 ${getLang().fileDesc} (×1.1)`, tok: outRtlTok },
-      { label: '프롬프트 오버헤드',     tok: overhead },
-    ]
+    breakdown,
   };
 }
 
@@ -2852,7 +2562,12 @@ function isLargeCxtModel() {
 function checkTokensAndRun() {
   if (!rtlFiles.length) { runBatch(); return; }
 
-  const calc = calcTotalConvTokens();
+  // 화면이 직전에 계산한 결과가 있으면 그것을 그대로 재사용 → 화면/모달 수치 일치 보장.
+  // 캐시가 없거나 RTL 단계가 아니어서 비어있으면 새로 계산.
+  const calc = window._lastConvCalc || calcTotalConvTokens();
+  // 새 계산도 캐시에 저장 (모달 닫고 재호출 등 후속 사용 대비)
+  window._lastConvCalc = calc;
+
   if (calc.total < TOKEN_WARN_THRESHOLD || isLargeCxtModel()) {
     if (calc.total >= TOKEN_WARN_THRESHOLD) {
       dbgLog('INF', `[ctx] ${getSelectedModel()} — largeCxtModel 등록됨, ${calc.total.toLocaleString()} tok 단일 실행`, 'inf');
@@ -2903,6 +2618,9 @@ function isLintOn() {
   return document.getElementById('lintOpt')?.checked ?? true;
 }
 
+// 사전 검토 LLM 진행 중 abort용
+let _preClarifyAbortController = null;
+
 // checkTokensAndRun 대신 여기서 사전 검토 여부를 결정
 async function checkTokensAndRunWithClarify(mode) {
   if (!isPreClarifyOn()) {
@@ -2922,15 +2640,20 @@ async function checkTokensAndRunWithClarify(mode) {
   const modal  = document.getElementById('preClarifyModal');
   const status = document.getElementById('preClarifyStatus');
   const qList  = document.getElementById('preClarifyQList');
+  const abortBtn = document.getElementById('preClarifyAbortBtn');
 
   modal.style.display = 'flex';
   status.textContent  = '질문 생성 중…';
+  if (abortBtn) abortBtn.style.display = '';   // LLM 진행 중에는 중단 버튼 노출
   qList.innerHTML     = '<div style="font-family:var(--mono);font-size:12px;color:var(--amber);padding:8px 0;">'
                       + '<span class="spin" style="display:inline-block;animation:spin .8s linear infinite;margin-right:6px;">◌</span>'
-                      + 'LLM이 컨텍스트를 검토 중입니다…</div>';
+                      + 'LLM이 컨텍스트를 검토 중입니다… <span style="color:var(--text3);">(좌측 ■ 중단 버튼으로 취소 가능)</span></div>';
 
   try {
     const questions = await _runPreClarifyLLM(host, model);
+
+    // LLM 응답 받은 후에는 중단 버튼 숨김 (이제 사용자 답변 단계)
+    if (abortBtn) abortBtn.style.display = 'none';
 
     if (!questions.length) {
       // 질문 없음 → 모달 닫고 바로 변환
@@ -2962,6 +2685,19 @@ async function checkTokensAndRunWithClarify(mode) {
     _preClarifyAnswers = questions.map(() => '');
 
   } catch(e) {
+    if (abortBtn) abortBtn.style.display = 'none';
+
+    // 사용자가 중단 버튼을 누른 경우 — 변환 자체를 취소하고 nextBtn 복구
+    if (e.name === 'AbortError') {
+      modal.style.display = 'none';
+      status.textContent  = '';
+      _preClarifyPending  = null;
+      _restoreNextBtn();
+      dbgLog('INF', '[pre-clarify] 사용자가 분석 중단 — 변환 취소', 'inf');
+      setStatus('lo', '사용자가 변환을 취소했습니다');
+      return;
+    }
+
     dbgLog('ERR', `[pre-clarify] ${e.message}`, 'err');
     modal.style.display = 'none';
     dbgLog('INF', '[pre-clarify] 오류 → 바로 변환 진행', 'inf');
@@ -3006,15 +2742,49 @@ Respond in JSON only (no markdown):
 
 Return at most 5 questions. If nothing is ambiguous, return { "questions": [] }`;
 
+  // 중단 버튼이 abort 할 수 있도록 AbortController 노출
+  _preClarifyAbortController = new AbortController();
   let raw = '';
-  await callLLM(host, model,
-    `${lang.expert} Identify ambiguities before code conversion. Respond only in valid JSON.`,
-    prompt, p => { raw = p; }, 'json');
+  try {
+    await callLLM(host, model,
+      `${lang.expert} Identify ambiguities before code conversion. Respond only in valid JSON.`,
+      prompt, p => { raw = p; }, 'json',
+      _preClarifyAbortController.signal);
+  } finally {
+    _preClarifyAbortController = null;
+  }
 
   const result = extractJson(raw);
   if (!result) return [];
   dbgLog('INF', `[pre-clarify] LLM 질문 ${result.questions?.length ?? 0}개 생성`, 'inf');
   return result.questions || [];
+}
+
+// 사용자가 사전 검토 모달의 ■ 중단 버튼을 누르면 호출
+function preClarifyAbort() {
+  if (_preClarifyAbortController) {
+    _preClarifyAbortController.abort();   // 진행 중인 fetch 즉시 취소
+    _preClarifyAbortController = null;
+  }
+  // catch(AbortError) 블록이 후속 정리(모달 닫기/nextBtn 복구)를 처리.
+  // 사용자가 답변 단계에서 중단을 눌러 controller가 이미 null인 경우에는
+  // 직접 닫고 변환을 취소.
+  const modal = document.getElementById('preClarifyModal');
+  if (modal && modal.style.display !== 'none') {
+    modal.style.display = 'none';
+    _preClarifyPending = null;
+    _restoreNextBtn();
+    dbgLog('INF', '[pre-clarify] 사용자가 중단 — 변환 취소', 'inf');
+    setStatus('lo', '사용자가 변환을 취소했습니다');
+  }
+}
+
+// nextBtn 라벨 + 활성화 상태 원복 (변환 시작 직전 상태로)
+function _restoreNextBtn() {
+  const _nb = document.getElementById('nextBtn');
+  if (!_nb) return;
+  _nb.disabled = false;
+  if (_nb.dataset.origText) _nb.textContent = _nb.dataset.origText;
 }
 
 function preClarifyProceed() {
@@ -3190,25 +2960,141 @@ function parseResult(raw, fname) {
 
 // CHANGES 라인 파싱: "SOURCE|TYPE|IDS|description" 또는 레거시 "SOURCE|TYPE|description"
 function parseChangeLine(line) {
-  const parts = line.split('|');
-  if (parts.length >= 4) {
-    // 새 포맷: SOURCE|TYPE|IDS|description
-    const ids = parts[2].trim().toUpperCase();
+  // 빈 라인 / 주석 / 구분선 거부
+  const trimmed = (line || '').trim();
+  if (!trimmed || /^(#|\/\/|---|===|\*\*\*)/.test(trimmed)) {
+    return { source:'', type:'', ids:[], desc:'', raw:line, valid:false, noChange:false };
+  }
+
+  const parts = trimmed.split('|');
+
+  // 유효 CHANGES 라인은 최소 3개 파이프(레거시) 또는 4개 파이프(신포맷) 필요
+  if (parts.length < 3) {
+    return { source:'', type:'', ids:[], desc:trimmed, raw:line, valid:false, noChange:false };
+  }
+
+  // SOURCE/TYPE 정규화 (대소문자 무시 + 알려진 값만 허용)
+  const VALID_SOURCES = new Set(['ALGO','UARCH','BOTH','ITER','LINT']);
+  const VALID_TYPES   = new Set(['ADD','MOD','REMOVE','FIX']);
+  const source = parts[0].trim().toUpperCase();
+  const type   = parts[1].trim().toUpperCase();
+
+  // "변경 없음" 라인 인식 — LLM 이 변환 결과 변경이 없을 때 표현하는 형식.
+  // SOURCE 와 TYPE 둘 다 NONE 이면 변경 없음으로 처리. 이 경우 desc 만 의미 있음.
+  // 예) NONE|NONE|NONE|No changes required for this file based on provided change points.
+  if (source === 'NONE' && type === 'NONE') {
     return {
-      source: parts[0].trim(),
-      type:   parts[1].trim(),
-      ids:    ids === 'NONE' ? [] : ids.split(',').map(s => s.trim()).filter(Boolean),
-      desc:   parts.slice(3).join('|').trim(),
+      source: 'NONE',
+      type:   'NONE',
+      ids:    [],
+      desc:   parts.slice(parts.length >= 4 ? 3 : 2).join('|').trim(),
       raw:    line,
+      valid:  true,        // 정상 라인 — PARSE? 경고 안 띄움
+      noChange: true,      // ID audit / 통계에서 제외용
     };
   }
-  // 레거시 포맷: SOURCE|TYPE|description
+
+  const validSrcType = VALID_SOURCES.has(source) && VALID_TYPES.has(type);
+
+  if (parts.length >= 4) {
+    // 신포맷: SOURCE|TYPE|IDS|description
+    const idsRaw = parts[2].trim().toUpperCase();
+    // 유효 ID 패턴: ALGO-숫자 또는 ARCH-숫자 (대소문자 이미 정규화됨)
+    const idsList = idsRaw === 'NONE' || idsRaw === '' ? []
+      : idsRaw.split(',').map(s => s.trim()).filter(s => /^(ALGO|ARCH|UARCH)-\w+$/.test(s));
+    return {
+      source, type,
+      ids:   idsList,
+      desc:  parts.slice(3).join('|').trim(),
+      raw:   line,
+      valid: validSrcType,
+      noChange: false,
+    };
+  }
+  // 레거시 포맷: SOURCE|TYPE|description (ID 없음)
   return {
-    source: parts[0].trim(),
-    type:   parts[1].trim(),
-    ids:    [],
-    desc:   parts.slice(2).join('|').trim(),
-    raw:    line,
+    source, type,
+    ids:   [],
+    desc:  parts.slice(2).join('|').trim(),
+    raw:   line,
+    valid: validSrcType,
+    noChange: false,
+  };
+}
+
+// 변환된 코드의 인라인 ID 코멘트에서 ID 추출
+// 인식 패턴: // ALGO-001:, // ARCH-002:, /* ALGO-003 ARCH-004: */, // BOTH ALGO-001 ARCH-002:, // ITER:
+// 라인 단위로 코멘트 부분을 찾아 그 안의 모든 ID 패턴을 수집 — 한 줄에 ID 다수 있어도 모두 캡처
+// 반환: { ids: Set<string>, hasBare: { algo, arch, both, iter } }
+function extractInlineIds(code) {
+  const ids = new Set();
+  const hasBare = { algo:false, arch:false, both:false, iter:false };
+  if (!code) return { ids, hasBare };
+
+  const idPat   = /\b(ALGO|ARCH|UARCH)-\w+\b/g;
+  const barePat = /\b(ALGO|ARCH|UARCH|BOTH|ITER)\s*:/gi;
+
+  for (const line of code.split('\n')) {
+    // 코멘트 마커(//  또는 /*)가 있는 부분만 처리
+    const cm = line.match(/\/[\/\*](.*)$/);
+    if (!cm) continue;
+    const tail = cm[1];
+
+    // 그 라인에 등장하는 모든 ID 캡처
+    let m;
+    idPat.lastIndex = 0;
+    while ((m = idPat.exec(tail)) !== null) {
+      // ARCH 와 UARCH 통일: 내부 추적은 ARCH-* 로
+      const prefix = m[1] === 'UARCH' ? 'ARCH' : m[1];
+      ids.add(`${prefix}-${m[0].split('-').slice(1).join('-')}`);
+    }
+
+    // 베어 코멘트 검출 (TAG: 형식, ID 미부여 케이스)
+    barePat.lastIndex = 0;
+    while ((m = barePat.exec(tail)) !== null) {
+      // 직전에 매칭된 ID 가 있는 베어인지 확인 — TAG 바로 앞이 '-숫자'면 ID 부여된 것이라 베어 카운트 X
+      const upTo = tail.slice(0, m.index);
+      if (/-\w+\s*$/.test(upTo)) continue;  // ALGO-001: 같은 ID 부여 케이스
+      const tag = m[1].toUpperCase();
+      if      (tag === 'ALGO')                    hasBare.algo = true;
+      else if (tag === 'ARCH' || tag === 'UARCH') hasBare.arch = true;
+      else if (tag === 'BOTH')                    hasBare.both = true;
+      else if (tag === 'ITER')                    hasBare.iter = true;
+    }
+  }
+  return { ids, hasBare };
+}
+
+// CHANGES 항목과 코드 인라인 ID 의 일관성 검사
+// 반환: {
+//   inCodeOnly:    Set<string>  코드에만 있고 CHANGES 에 누락된 ID
+//   inChangesOnly: Set<string>  CHANGES 에는 있는데 코드에 흔적 없는 ID
+//   bareWithoutIds: { algo, arch, both, iter }  ID 없는 베어 코멘트 존재
+//   invalidLines:  Array<{raw, idx}>  파싱 실패한 CHANGES 라인
+//   ok:            boolean  추적 일관성 통과 여부
+// }
+function auditChangeTracking(code, changes) {
+  const { ids: codeIds, hasBare } = extractInlineIds(code || '');
+  const changeIds = new Set();
+  const invalidLines = [];
+
+  (changes || []).forEach((row, idx) => {
+    const c = parseChangeLine(row);
+    if (!c.valid && row && row.trim()) {
+      invalidLines.push({ raw: row, idx });
+    }
+    c.ids.forEach(id => changeIds.add(id.replace(/^UARCH-/, 'ARCH-')));
+  });
+
+  const inCodeOnly    = new Set([...codeIds].filter(id => !changeIds.has(id)));
+  const inChangesOnly = new Set([...changeIds].filter(id => !codeIds.has(id)));
+
+  return {
+    inCodeOnly,
+    inChangesOnly,
+    bareWithoutIds: hasBare,
+    invalidLines,
+    ok: inCodeOnly.size === 0 && inChangesOnly.size === 0 && invalidLines.length === 0,
   };
 }
 
@@ -4216,6 +4102,18 @@ function showVersion(fileIdx, histIdx) {
   // h.changes: 이 버전에서 발생한 변경 목록 (ID 포함)
   const verChHtml = (h.changes || []).map(row => {
     const c   = parseChangeLine(row);
+    if (!c.valid) {
+      return `<div class="ci" style="border-left:2px solid var(--amber);padding-left:8px;">
+        <span class="pill mod" style="background:rgba(255,195,64,.18);color:var(--amber);">PARSE?</span>
+        <p style="color:var(--text3);font-style:italic;">${esc(c.raw||row)}</p>
+      </div>`;
+    }
+    if (c.noChange) {
+      return `<div class="ci" style="opacity:.75;">
+        <span class="pill" style="background:var(--s2);color:var(--text3);border:1px solid var(--border);">NO CHANGE</span>
+        <p style="color:var(--text3);">${esc(c.desc || '변경 없음')}</p>
+      </div>`;
+    }
     const sc  = c.source==='UARCH'?'ua':c.source==='BOTH'?'add':c.source==='ITER'?'mod':'mod';
     const tc  = c.type==='ADD'?'add':c.type==='REMOVE'?'rem':'mod';
     const sl  = c.source==='UARCH'?'μARCH':c.source==='BOTH'?'BOTH':c.source==='ITER'?'ITER':'ALGO';
@@ -5242,7 +5140,99 @@ function highlightDiffById(mk, id) {
 const LINT_MAX_RETRY = 2;
 
 // 단일 파일 lint 실행 → { ok, errors, warnings, raw, linter, note }
-async function lintFile(code, filename) {
+// ── Missing module 분류 / 사용자 확인 ────────────────────
+// linter 별로 "정의되지 않은 module" 류 오류 메시지 패턴이 다양함.
+// 보수적으로 매칭 (false positive 가 false negative 보다 안전 — 자동 추가가 더 위험)
+
+const _MISSING_MODULE_PATTERNS = [
+  // iverilog
+  /Unknown module type:\s*(\w+)/i,                          // "Unknown module type: alu_core"
+  /unknown module\s+[`'"]?(\w+)[`'"]?(?!\s*type)/i,         // "unknown module 'foo'"
+  /Unable to bind wire\/reg\/memory.*?\.([a-zA-Z_]\w+)['"`]/i,    // 'top.dut.sub_unit' 의 마지막 식별자
+  /is not a port of\s+(\w+)/i,                              // "'foo' is not a port of submod"
+  /could not find module declaration for\s+[`'"]?(\w+)[`'"]?/i,
+  // verible
+  /referenced module\s+(\w+)\s+not found/i,
+  // clang++ (SystemC)
+  /use of undeclared identifier ['"]?(\w+)['"]?/i,
+  /unknown type name ['"]?(\w+)['"]?/i,
+  /no member named ['"]?(\w+)['"]? in/i,
+  // 일반
+  /(?:module|class|component)\s+['"]?(\w+)['"]?\s+(?:not found|undefined|undeclared|not declared|missing)/i,
+  /undefined reference to\s+[`'"]?(\w+)[`'"]?/i,
+];
+
+// lint errors[] 를 missing-module 과 그 외로 분류
+// 반환: { missing: [{...err, moduleName}], others: [...err] }
+function classifyMissingModuleErrors(errors) {
+  const missing = [];
+  const others  = [];
+  (errors || []).forEach(err => {
+    const msg = err?.msg || '';
+    let matched = null;
+    for (const re of _MISSING_MODULE_PATTERNS) {
+      const m = msg.match(re);
+      if (m) { matched = m[1] || '<unknown>'; break; }
+    }
+    if (matched) missing.push({ ...err, moduleName: matched });
+    else         others.push(err);
+  });
+  return { missing, others };
+}
+
+// 사용자 확인 모달 — promise 반환 ('fix-others-only' | 'fix-all' | 'cancel')
+let _missingModuleResolver = null;
+function askMissingModuleDecision(f, moduleAudit) {
+  return new Promise(resolve => {
+    _missingModuleResolver = resolve;
+
+    // 누락된 module 목록 (중복 제거)
+    const uniqMods = [...new Set(moduleAudit.missing.map(e => e.moduleName))].sort();
+    const otherCnt = moduleAudit.others.length;
+
+    const fileEl = document.getElementById('missingModuleFile');
+    if (fileEl) fileEl.textContent = f.name;
+
+    const bodyEl = document.getElementById('missingModuleBody');
+    if (bodyEl) {
+      const modList = uniqMods.map(m =>
+        `<span style="display:inline-block;padding:2px 8px;margin:2px 3px 2px 0;background:rgba(255,195,64,.15);color:var(--amber);border-radius:3px;border:1px solid rgba(255,195,64,.3);">${esc(m)}</span>`
+      ).join('');
+      const errSamples = moduleAudit.missing.slice(0, 6).map(e =>
+        `<div style="color:var(--text3);padding-left:10px;">L${e.line}: ${esc(e.msg)}</div>`
+      ).join('');
+      const more = moduleAudit.missing.length > 6
+        ? `<div style="color:var(--text3);padding-left:10px;">… 외 ${moduleAudit.missing.length-6}건</div>` : '';
+      bodyEl.innerHTML = `
+        <div style="margin-bottom:10px;">
+          <span style="color:var(--text2);">정의되지 않은 module / 식별자:</span><br>
+          <div style="margin-top:6px;">${modList}</div>
+        </div>
+        <div style="margin-bottom:10px;border-top:1px dashed var(--border);padding-top:8px;">
+          <span style="color:var(--text2);">관련 lint 오류 (${moduleAudit.missing.length}건):</span>
+          ${errSamples}${more}
+        </div>
+        <div style="color:var(--text3);">
+          미분류 오류: <span style="color:var(--text);">${otherCnt}건</span>
+          ${otherCnt > 0 ? '<span style="color:var(--text3);"> — "다른 오류만 자동 수정" 선택 시 이것들만 LLM 으로 보냅니다.</span>' : ''}
+        </div>`;
+    }
+
+    document.getElementById('missingModuleModal').style.display = 'flex';
+  });
+}
+
+// 모달 버튼 클릭 시 호출 — promise 를 resolve 하고 모달 닫음
+function missingModuleResolve(decision) {
+  document.getElementById('missingModuleModal').style.display = 'none';
+  if (_missingModuleResolver) {
+    const r = _missingModuleResolver;
+    _missingModuleResolver = null;
+    r(decision);
+  }
+}
+
+async function lintFile(code, filename, signal = null) {
   const host = (document.getElementById('oHost').value || '').replace(/\/+$/, '');
   // dev 서버 포트 — _devPort로 자동 감지 (3000 또는 3030)
   const lintUrl = devUrl('/lint');
@@ -5253,10 +5243,12 @@ async function lintFile(code, filename) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code, filename, lang }),
+      signal,                              // 사용자 ■ 중단 버튼이 abort 가능
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.json();
   } catch (e) {
+    if (e.name === 'AbortError') throw e;  // abort 는 상위로 전달
     // dev 서버 미실행 또는 연결 불가 → lint 건너뜀
     dbgLog('INF', `[lint] 서버 연결 불가 — 건너뜀 (${e.message})`, 'inf');
     return { ok: true, errors: [], warnings: [], note: `lint 서버 연결 불가: ${e.message}` };
@@ -5264,7 +5256,7 @@ async function lintFile(code, filename) {
 }
 
 // lint 오류를 LLM에 전달해서 자동 수정 요청
-async function autoFixLint(f, lintResult, host, model, attempt) {
+async function autoFixLint(f, lintResult, host, model, attempt, signal = null) {
   const lang = getLang();
   const errorBlock = lintResult.errors.slice(0, 20)
     .map(e => `Line ${e.line}: ${e.msg}`)
@@ -5287,6 +5279,7 @@ ${f.content}
 Rules:
 - Fix ONLY the listed lint errors
 - Preserve the original code structure and style exactly
+- Do NOT add new module definitions or stub modules — if a module is missing, leave it for the engineer to handle
 - Output ONLY the complete fixed ${lang.fileDesc} file (no markdown, no backticks)
 - After the code, output: ===CHANGES===
 - List each fix: LINT|FIX|NONE|<error description fixed>`;
@@ -5296,7 +5289,7 @@ Rules:
   try {
     let raw = '';
     await callLLM(host, model, `${lang.expert} Fix lint errors precisely.`,
-      fixPrompt, p => { raw = p; }, 'rtl');
+      fixPrompt, p => { raw = p; }, 'rtl', signal);
 
     const parsed = parseResult(raw, f.name);
     if (parsed.result && parsed.result.trim()) {
@@ -5304,6 +5297,7 @@ Rules:
       f.changes = [...f.changes, ...parsed.changes];
     }
   } catch (e) {
+    if (e.name === 'AbortError') throw e;  // abort 는 상위로 전달
     dbgLog('ERR', `[lint-fix] ${e.message}`, 'err');
   }
 }
@@ -5314,36 +5308,72 @@ async function lintAndFix(f, host, model, stepId) {
 
   monUpdateDetail(stepId, `lint 검사 중…`);
 
-  let lintResult = await lintFile(f.result, f.name);
-  f.lintResult = lintResult;
+  const signal = _batchAbortController?.signal;
 
-  if (lintResult.note) {
-    dbgLog('INF', `[lint] ${f.name}: ${lintResult.note}`, 'inf');
-    return;  // lint 불가 → 그냥 통과
-  }
-
-  dbgLog('INF',
-    `[lint] ${f.name}: ${lintResult.errors.length}개 오류, ${lintResult.warnings.length}개 경고 (${lintResult.linter})`,
-    lintResult.ok ? 'inf' : 'err');
-
-  // 오류가 있으면 자동 수정 재시도
-  for (let attempt = 1; attempt <= LINT_MAX_RETRY && !lintResult.ok; attempt++) {
-    monUpdateDetail(stepId,
-      `lint 오류 ${lintResult.errors.length}개 — 자동 수정 시도 ${attempt}/${LINT_MAX_RETRY}…`);
-
-    await autoFixLint(f, lintResult, host, model, attempt);
-
-    // 재lint
-    lintResult = await lintFile(f.result, f.name);
+  try {
+    let lintResult = await lintFile(f.result, f.name, signal);
     f.lintResult = lintResult;
 
-    dbgLog('INF',
-      `[lint-fix] ${f.name} 시도${attempt} 결과: 오류 ${lintResult.errors.length}개`,
-      lintResult.ok ? 'inf' : 'err');
-  }
+    if (lintResult.note) {
+      dbgLog('INF', `[lint] ${f.name}: ${lintResult.note}`, 'inf');
+      return;  // lint 불가 → 그냥 통과
+    }
 
-  if (!lintResult.ok) {
-    dbgLog('ERR', `[lint] ${f.name}: 자동 수정 후에도 오류 ${lintResult.errors.length}개 남음`, 'err');
+    dbgLog('INF',
+      `[lint] ${f.name}: ${lintResult.errors.length}개 오류, ${lintResult.warnings.length}개 경고 (${lintResult.linter})`,
+      lintResult.ok ? 'inf' : 'err');
+
+    // missing module 감지 — 자동 fix 대상에서 제외하고 사용자에게 결정 요청
+    const moduleAudit = classifyMissingModuleErrors(lintResult.errors);
+    if (moduleAudit.missing.length) {
+      dbgLog('INF',
+        `[lint] ${f.name}: 정의되지 않은 module ${moduleAudit.missing.length}개 감지 — 자동 fix 보류, 사용자 확인 대기`,
+        'inf');
+      // 사용자 확인 모달 표시 → 결정에 따라 분기
+      const decision = await askMissingModuleDecision(f, moduleAudit);
+      if (decision === 'cancel') {
+        // 자동 fix 전체 건너뜀 — 결과는 그대로 두되 lint 경고로 마킹
+        dbgLog('INF', `[lint] ${f.name}: 사용자가 자동 수정을 건너뜀`, 'inf');
+        return;
+      } else if (decision === 'fix-others-only') {
+        // missing module 오류만 제외하고 나머지 자동 fix
+        lintResult = {
+          ...lintResult,
+          errors: moduleAudit.others,
+          ok: moduleAudit.others.length === 0,
+          _missingModulesPreserved: moduleAudit.missing,   // UI 표시용
+        };
+        f.lintResult = lintResult;
+        if (lintResult.ok) return;   // 다른 오류 없으면 종료
+      }
+      // decision === 'fix-all' 인 경우는 그대로 진행 (모든 오류 LLM 에 전달)
+    }
+
+    // 오류가 있으면 자동 수정 재시도
+    for (let attempt = 1; attempt <= LINT_MAX_RETRY && !lintResult.ok; attempt++) {
+      monUpdateDetail(stepId,
+        `lint 오류 ${lintResult.errors.length}개 — 자동 수정 시도 ${attempt}/${LINT_MAX_RETRY}…`);
+
+      await autoFixLint(f, lintResult, host, model, attempt, signal);
+
+      // 재lint
+      lintResult = await lintFile(f.result, f.name, signal);
+      f.lintResult = lintResult;
+
+      dbgLog('INF',
+        `[lint-fix] ${f.name} 시도${attempt} 결과: 오류 ${lintResult.errors.length}개`,
+        lintResult.ok ? 'inf' : 'err');
+    }
+
+    if (!lintResult.ok) {
+      dbgLog('ERR', `[lint] ${f.name}: 자동 수정 후에도 오류 ${lintResult.errors.length}개 남음`, 'err');
+    }
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      dbgLog('INF', `[lint] ${f.name}: 사용자 중단으로 lint/자동수정 취소`, 'inf');
+      throw e;
+    }
+    dbgLog('ERR', `[lint] ${f.name}: ${e.message}`, 'err');
   }
 }
 
@@ -5553,7 +5583,8 @@ async function runSequential(ctx, startIdx = 0) {
           host, model,
           `${getLang().expert} Follow all instructions exactly.`,
           prompt, onChunk,
-          'rtl'
+          'rtl',
+          _batchAbortController?.signal    // 사용자 ■ 중단 버튼이 즉시 abort 가능
         );
         const elapsed   = ((Date.now() - t0) / 1000).toFixed(1);
         const outTokens = Math.round(raw.length / 3.5);
@@ -5567,6 +5598,14 @@ async function runSequential(ctx, startIdx = 0) {
         chunkChanges.push(...parsed.changes);
 
       } catch(e) {
+        // 사용자가 중단 버튼을 누른 경우 — 즉시 정리하고 외부 루프 종료
+        if (e.name === 'AbortError' || _batchAborted) {
+          dbgLog('INF', `[${chunkLabel}] 사용자 중단 — ${idx+1}/${rtlFiles.length}에서 정지`, 'inf');
+          monUpdateStep(chunkStepId, '■', 'err', '사용자 중단');
+          chunkResults.push(`// [USER_ABORTED] ${chunk}`);
+          f.status = 'wait';   // 재시도 가능하도록 wait으로 되돌림
+          break;               // chunk 루프 종료 → 외부 파일 루프에서 _batchAborted 체크
+        }
         dbgLog('ERR', `[${chunkLabel}] ${e.message}`, 'err');
         monUpdateStep(chunkStepId, '✕', 'err', `오류: ${e.message}`);
         chunkResults.push(`// 오류: ${e.message}\n${chunk}`);
@@ -5575,6 +5614,16 @@ async function runSequential(ctx, startIdx = 0) {
           showResumeBtn();
         }
       }
+    }
+
+    // 사용자 중단 시: 결과 보존하지 않고 외부 루프 종료 (다음 iteration의 _batchAborted 체크가 처리)
+    if (_batchAborted) {
+      monSetStatus(`중단됨 — ${idx}/${rtlFiles.length} 완료 · ↺ 이어서 변환 가능`, 'var(--amber)');
+      setStatus('lo', `중단됨 — ${idx}/${rtlFiles.length}`);
+      hideStopBtn(); showResumeBtn();
+      const _nb2 = document.getElementById('nextBtn');
+      if (_nb2) { _nb2.disabled = false; _nb2.textContent = _nb2.dataset.origText || '▶ 재변환'; }
+      return;
     }
 
     f.result  = chunkResults.join('\n\n');
@@ -5670,6 +5719,9 @@ Rules:
     SOURCE|TYPE|IDS|description
     (IDS=comma-separated impact IDs, e.g. ALGO-001,ARCH-002; NONE if not traceable)
     (repeat for each file)
+- If a file has NO changes (e.g. none of the change points are relevant to it),
+  still emit its ===FILE: ... === section with the original content unchanged,
+  and emit a single CHANGES line: NONE|NONE|NONE|<brief reason>
 
 ${ctxSection}
 
@@ -5695,7 +5747,8 @@ ${allRtl}`;
     const { raw, finish } = await callLLM(host, model,
       `${getLang().expert} Follow all instructions exactly.`,
       prompt, onChunk,
-      'rtl'
+      'rtl',
+      _batchAbortController?.signal    // 사용자 ■ 중단 버튼이 즉시 abort 가능
     );
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
     const outTokens = Math.round(raw.length / 3.5);
@@ -5742,6 +5795,23 @@ ${allRtl}`;
     }
 
   } catch(e) {
+    // 사용자 ■ 중단 버튼으로 인한 abort 는 오류 아닌 정상 흐름
+    if (e.name === 'AbortError' || _batchAborted) {
+      dbgLog('INF', '단일 컨텍스트 — 사용자 중단', 'inf');
+      monUpdateStep('s-llm', '■', 'err', '사용자 중단');
+      monSetStatus('중단됨 — ↺ 이어서 변환 가능', 'var(--amber)');
+      // 결과 미수신 — 모든 파일 wait 상태로 되돌려 재시도 가능
+      rtlFiles.forEach(f => {
+        if (f.status === 'run') { f.status = 'wait'; f.result = ''; f.changes = []; }
+      });
+      renderRtl(); renderResTabs();
+      hideStopBtn(); showResumeBtn();
+      setStatus('lo', '사용자가 변환을 중단했습니다');
+      const _nbA = document.getElementById('nextBtn');
+      if (_nbA) { _nbA.disabled = false; _nbA.textContent = _nbA.dataset.origText || '▶ 재변환'; }
+      return;
+    }
+
     dbgLog('ERR', `단일 컨텍스트 오류: ${e.message}`, 'err');
     monUpdateStep('s-llm',   '✕', 'err', e.message);
     monUpdateStep('s-parse', '✕', 'err', '파싱 중단');
@@ -5793,6 +5863,9 @@ Rules:
 - Then list each change: SOURCE|TYPE|IDS|description
   (SOURCE=ALGO/UARCH/BOTH, TYPE=ADD/MOD/REMOVE,
    IDS=comma-separated impact IDs from the change points above, e.g. ALGO-001,ARCH-002; use NONE if not traceable)
+- If NO changes were applied to this file (e.g. none of the change points are relevant),
+  output a single line: NONE|NONE|NONE|<brief reason why no changes were needed>
+  In this case, the code section above must be the original file, unchanged.
 
 ${ctxSection}
 
@@ -5834,14 +5907,62 @@ function showRes(idx){
     else if(/\/\/ ITER:/.test(line))               rendered+=`<span style="background:rgba(245,184,64,.1);display:block;">${e}</span>`;
     else rendered+=e+'\n';
   });
+  // CHANGES 라인 → ID 추적 일관성 검사
+  const audit = auditChangeTracking(f.result, f.changes);
+
   const chHtml=f.changes.map(row=>{
     const c   = parseChangeLine(row);
+    if (!c.valid) {
+      // 파싱 실패한 라인은 경고 스타일로 raw 표시 (정보 손실 방지)
+      return `<div class="ci" style="border-left:2px solid var(--amber);padding-left:8px;">
+        <span class="pill mod" style="background:rgba(255,195,64,.18);color:var(--amber);">PARSE?</span>
+        <p style="color:var(--text3);font-style:italic;">${esc(c.raw||row)}</p>
+      </div>`;
+    }
+    // "변경 없음" 라인 — LLM 이 이 파일에 적용된 변경이 없음을 명시한 케이스
+    if (c.noChange) {
+      return `<div class="ci" style="opacity:.75;">
+        <span class="pill" style="background:var(--s2);color:var(--text3);border:1px solid var(--border);">NO CHANGE</span>
+        <p style="color:var(--text3);">${esc(c.desc || '변경 없음')}</p>
+      </div>`;
+    }
     const sc  = c.source==='UARCH'?'ua':c.source==='BOTH'?'add':c.source==='ITER'?'mod':'mod';
     const tc  = c.type==='ADD'?'add':c.type==='REMOVE'?'rem':'mod';
     const sl  = c.source==='UARCH'?'μARCH':c.source==='BOTH'?'BOTH':c.source==='ITER'?'ITER':'ALGO';
     const ids = renderIdBadges(c.ids, true);
     return`<div class="ci"><span class="pill ${sc}">${sl}</span><span class="pill ${tc}">${c.type}</span>${ids}<p>${esc(c.desc)}</p></div>`;
   }).join('');
+
+  // 누락된 ID(코드에는 있지만 CHANGES 에 없음) 경고 섹션
+  let auditHtml = '';
+  if (audit.inCodeOnly.size > 0 || audit.inChangesOnly.size > 0 || audit.invalidLines.length > 0) {
+    const parts = [];
+    if (audit.inCodeOnly.size > 0) {
+      const ids = [...audit.inCodeOnly].sort();
+      parts.push(`<div style="margin-bottom:6px;">
+        <span style="color:var(--amber);font-weight:600;">⚠ CHANGES 누락:</span>
+        <span style="color:var(--text3);">코드 코멘트에는 있지만 변경 목록에 없음 (${ids.length}개)</span>
+        <div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:3px;">${renderIdBadges(ids, true)}</div>
+      </div>`);
+    }
+    if (audit.inChangesOnly.size > 0) {
+      const ids = [...audit.inChangesOnly].sort();
+      parts.push(`<div style="margin-bottom:6px;">
+        <span style="color:var(--amber);font-weight:600;">⚠ 코드 흔적 없음:</span>
+        <span style="color:var(--text3);">CHANGES 에는 있지만 코드에 // ID 코멘트 없음 (${ids.length}개)</span>
+        <div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:3px;">${renderIdBadges(ids, true)}</div>
+      </div>`);
+    }
+    if (audit.invalidLines.length > 0) {
+      parts.push(`<div style="margin-bottom:6px;">
+        <span style="color:var(--amber);font-weight:600;">⚠ 파싱 실패 라인:</span>
+        <span style="color:var(--text3);">${audit.invalidLines.length}건</span>
+      </div>`);
+    }
+    auditHtml = `<div style="padding:8px 11px;margin:0 0 6px 0;background:rgba(255,195,64,.08);border:1px solid rgba(255,195,64,.3);border-radius:4px;font-family:var(--mono);font-size:11px;line-height:1.6;">
+      ${parts.join('')}
+    </div>`;
+  }
 
   const verTabs = renderVersionTabs(f, idx);
   const hasChanges = f.changes.length > 0;
@@ -5863,6 +5984,11 @@ function showRes(idx){
             ? `<span style="font-family:var(--mono);font-size:10px;padding:1px 6px;border-radius:3px;background:rgba(78,232,158,.15);color:var(--green);margin-left:6px;">✓ lint</span>`
             : `<span style="font-family:var(--mono);font-size:10px;padding:1px 6px;border-radius:3px;background:rgba(255,107,117,.15);color:var(--red);margin-left:6px;">⚠ lint ${f.lintResult.errors.length}개 오류</span>`
         ) : ''}
+        ${audit.ok && f.changes.length
+          ? `<span style="font-family:var(--mono);font-size:10px;padding:1px 6px;border-radius:3px;background:rgba(78,232,158,.12);color:var(--green);margin-left:4px;" title="CHANGES 와 코드 인라인 ID 일치">✓ ID</span>`
+          : (audit.inCodeOnly.size + audit.inChangesOnly.size + audit.invalidLines.length) > 0
+            ? `<span style="font-family:var(--mono);font-size:10px;padding:1px 6px;border-radius:3px;background:rgba(255,195,64,.18);color:var(--amber);margin-left:4px;" title="ID 추적 불일치 ${audit.inCodeOnly.size + audit.inChangesOnly.size + audit.invalidLines.length}건">⚠ ID</span>`
+            : ''}
       </div>
       <div style="display:flex;align-items:center;gap:8px;">
         <div class="legend">
@@ -5888,6 +6014,7 @@ function showRes(idx){
           변경 요약 <span style="color:var(--text3);font-weight:400;">(${f.changes.length}건)</span>
         </div>
         <div style="flex:1;overflow-y:auto;padding:8px 10px;display:flex;flex-direction:column;gap:6px;">
+          ${auditHtml}
           ${f.lintResult && !f.lintResult.note && (f.lintResult.errors.length || f.lintResult.warnings.length) ? `
           <div style="border-radius:5px;border:1px solid ${f.lintResult.ok ? 'rgba(78,232,158,.3)' : 'rgba(255,107,117,.3)'};overflow:hidden;margin-bottom:4px;">
             <div style="padding:5px 8px;background:${f.lintResult.ok ? 'rgba(78,232,158,.08)' : 'rgba(255,107,117,.08)'};font-family:var(--mono);font-size:10px;font-weight:600;color:${f.lintResult.ok ? 'var(--green)' : 'var(--red)'};">
@@ -6207,153 +6334,13 @@ window.addEventListener('resize', () => {
     if (mappings[mk]?.length) requestAnimationFrame(() => drawArrows(mk));
   });
 });
-// ── 서버 URL 결정 ──────────────────────────────────────────
-// VS Code 포트 포워딩:  https://hpc-host/proxy/8080/  → basePath=/proxy/8080
-// 직접 접속:            http://localhost:8080/          → basePath=''
-// file:// 직접 열기:    localhost:8080 fallback
-window._devServerAvailable = false;
-window._serverOrigin  = '';   // https://hpc-host
-window._serverBase    = '';   // /proxy/8080  (포트 포워딩 prefix)
 
-function devUrl(path) {
-  return window._serverOrigin + window._serverBase + path;
-}
+// ↓ 분리 모듈: js/server-connection.js
+</script>
+<script src="js/server-connection.js"></script>
+<script>
+// ↑ 분리 모듈: js/server-connection.js
 
-// pathname에서 basePath 추출
-// /proxy/8080/  → /proxy/8080
-// /             → ''
-function _getBasePath() {
-  const p = window.location.pathname;
-  if (!p || p === '/') return '';
-  // HTML 파일명 제거 (직접 열기 시): /foo/bar.html → /foo
-  const stripped = p.endsWith('/') ? p.slice(0, -1) : p.replace(/\/[^/]*$/, '');
-  return stripped;
-}
-
-// 서버 감지
-async function _tryPing() {
-  const origin = window.location.origin;
-
-  if (!origin.startsWith('file://')) {
-    const base = _getBasePath();
-    const url  = `${origin}${base}/ping`;
-    try {
-      // AbortSignal.timeout 대신 수동 타임아웃 — Firefox NS_BINDING_ABORTED 방지
-      const ctrl    = new AbortController();
-      const timer   = setTimeout(() => ctrl.abort(), 8000);
-      const r = await fetch(url, { signal: ctrl.signal });
-      clearTimeout(timer);
-      const d = await r.json();
-      if (d.ok) {
-        window._serverOrigin = origin;
-        window._serverBase   = base;
-        return true;
-      }
-    } catch(e) {
-      dbgLog('INF', `[ping] ${url} 실패: ${e.message}`, 'inf');
-    }
-  }
-
-  // file:// 직접 열기 — localhost:8080 fallback
-  try {
-    const ctrl2  = new AbortController();
-    const timer2 = setTimeout(() => ctrl2.abort(), 3000);
-    const r = await fetch('http://localhost:8080/ping', { signal: ctrl2.signal });
-    clearTimeout(timer2);
-    const d = await r.json();
-    if (d.ok) {
-      window._serverOrigin = 'http://localhost:8080';
-      window._serverBase   = '';
-      return true;
-    }
-  } catch(_) {}
-
-  return false;
-}
-
-// postMessage 리스너 (same-origin 검증)
-window.addEventListener('message', (e) => {
-  if (window._serverOrigin && e.origin !== window._serverOrigin &&
-      e.origin !== window.location.origin) return;
-  const { action } = e.data || {};
-  if (action === 'auto-run-analysis') _runAutoRunPipeline({ doAnalysis: true,  doConvert: false });
-  else if (action === 'auto-run-convert')  _runAutoRunPipeline({ doAnalysis: false, doConvert: true });
-  else if (action === 'auto-run-all')      _runAutoRunPipeline({ doAnalysis: true,  doConvert: true });
-});
-
-_tryPing()
-  .then(ok => {
-    if (!ok) return;
-    window._devServerAvailable = true;
-    dbgLog('INF', `서버 감지됨 (${window._serverOrigin}${window._serverBase}) — 프록시 + 파일 로그 활성화`, 'res');
-    document.getElementById('ps').textContent = '⚡ server';
-    document.getElementById('ps').style.color = 'var(--green)';
-
-    // API 명령 폴링 시작 (3초 간격)
-    setInterval(async () => {
-      try {
-        const r = await fetch(devUrl('/api/poll'));
-        const d = await r.json();
-        if (d.command) {
-          dbgLog('INF', `[api] 명령 수신: ${d.command.action}`, 'inf');
-          if      (d.command.action === 'auto-run-analysis') _runAutoRunPipeline({ doAnalysis: true,  doConvert: false });
-          else if (d.command.action === 'auto-run-convert')  _runAutoRunPipeline({ doAnalysis: false, doConvert: true  });
-          else if (d.command.action === 'auto-run-all')      _runAutoRunPipeline({ doAnalysis: true,  doConvert: true  });
-        }
-      } catch(_) {}
-    }, 3000);
-
-    // .env 값 로드
-    return fetch(devUrl('/env')).then(r => r.json()).then(env => {
-      if (!env.loaded) {
-        dbgLog('INF', '.env 파일 없음 — 기본값 사용 (서버 디렉터리에 .env 생성 권장)', 'inf');
-        return;
-      }
-      // BaseURL 주입
-      if (env.BASE_URL) {
-        const hostEl = document.getElementById('oHost');
-        if (hostEl) {
-          hostEl.value = env.BASE_URL;
-          hostEl.style.borderColor = 'var(--green)';
-          hostEl.title = `.env 에서 로드됨: ${env.BASE_URL}`;
-        }
-      }
-      // API Key 주입
-      if (env.API_KEY) {
-        const keyEl = document.getElementById('oApiKey');
-        if (keyEl) {
-          keyEl.value = env.API_KEY;
-          keyEl.style.borderColor = 'var(--green)';
-          keyEl.placeholder = '✓ .env에서 로드됨';
-        }
-      }
-      // 기본 모델 주입
-      if (env.DEFAULT_MODEL) {
-        window._envDefaultModel = env.DEFAULT_MODEL;
-        const modelEl = document.getElementById('oModel');
-        if (modelEl) modelEl.value = env.DEFAULT_MODEL;
-      }
-
-      // Ollama 미사용 — OLLAMA_MODE 무시
-      // config 기본값 반영 (dev 서버 있을 때)
-      loadConfig().then(cfg => {
-        const chk = document.getElementById('includeExcludedAsRef');
-        if (chk && cfg?.targetRtl?.includeExcludedAsRef !== undefined) {
-          chk.checked = cfg.targetRtl.includeExcludedAsRef;
-        }
-      });
-
-      dbgLog('INF',
-        `.env 로드 완료: BASE_URL=${env.BASE_URL || '(없음)'}` +
-        ` MODEL=${env.DEFAULT_MODEL || '(없음)'}` +
-        (env.API_KEY ? ' API_KEY=****' : ''),
-        'res');
-      document.getElementById('ps').textContent = '⚡ dev server + .env';
-    });
-  })
-  .catch(() => {
-    dbgLog('INF', 'Dev 서버 없음 — 직접 연결 모드 (로그는 "로그 저장" 버튼 사용)', 'inf');
-  });
 </script>
 </body>
 </html>
