@@ -167,33 +167,69 @@ const server = http.createServer(async (req, res) => {
 
 
   // ── /lint: verible(RTL) 또는 clangd(SystemC) 로 문법/포트 검사 ──
+  // 두 가지 입력 모드 지원:
+  //   1) files: [{name, content}, ...] + target  (권장 — 의존성 파일 동반)
+  //   2) code + filename                          (구버전 단일 파일 — 하위 호환)
   if (req.method === 'POST' && pathname === '/lint') {
-    const { execFile } = require('child_process');
+    const { execFile, execSync } = require('child_process');
     const os   = require('os');
     const body = JSON.parse((await readBody(req)).toString('utf8'));
-    const { code, filename, lang } = body;  // lang: 'rtl' | 'systemc'
+    const { files, target, code, filename, lang } = body;
 
-    // 임시 파일 작성
-    const ext     = lang === 'systemc' ? '.cpp' : (filename?.endsWith('.sv') ? '.sv' : '.v');
-    const tmpFile = path.join(os.tmpdir(), `rtl_lint_${Date.now()}${ext}`);
-    fs.writeFileSync(tmpFile, code, 'utf8');
-
-    const cleanup = () => { try { fs.unlinkSync(tmpFile); } catch {} };
-
-    // 사용 가능한 linter 탐색
-    const { execSync } = require('child_process');
     function which(cmd) {
       try { execSync(`which ${cmd}`, {stdio:'ignore'}); return true; } catch { return false; }
     }
+    function safeName(name) {
+      // 디렉토리 traversal 방지
+      const base = (name || '').split(/[\\/]/).pop() || 'unnamed';
+      return base.replace(/\.\./g, '_');
+    }
+
+    // === 입력 정규화 — files 모드와 code 모드 둘 다 지원 ===
+    const isSC = lang === 'systemc';
+    const defaultExt = isSC ? '.cpp'
+      : ((target||filename||'').endsWith('.sv') ? '.sv' : '.v');
+
+    let inputFiles, targetName;
+    if (Array.isArray(files) && files.length > 0) {
+      inputFiles = files;
+      targetName = target || files[0].name;
+    } else if (typeof code === 'string') {
+      inputFiles = [{ name: filename || `unnamed${defaultExt}`, content: code }];
+      targetName = filename || inputFiles[0].name;
+    } else {
+      res.writeHead(400, {'Content-Type':'application/json'});
+      res.end(JSON.stringify({ok:false, errors:[{line:0,col:0,msg:'files/code 누락'}], warnings:[]}));
+      return;
+    }
+
+    // 임시 디렉토리에 모든 파일 풀기
+    const tmpDir = path.join(os.tmpdir(), `rtl_lint_${Date.now()}_${Math.random().toString(36).slice(2,8)}`);
+    fs.mkdirSync(tmpDir, { recursive: true });
+
+    const cleanup = () => {
+      try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+    };
+
+    const allPaths = [];
+    let targetPath = null;
+    for (const f of inputFiles) {
+      let base = safeName(f.name);
+      if (!path.extname(base)) base += defaultExt;
+      const p = path.join(tmpDir, base);
+      fs.writeFileSync(p, f.content || '', 'utf8');
+      allPaths.push(p);
+      if (f.name === targetName) targetPath = p;
+    }
+    if (!targetPath && allPaths.length) {
+      targetPath = allPaths[0];
+      targetName = path.basename(targetPath);
+    }
 
     let linter, args;
-    if (lang === 'systemc') {
-      // clangd 기반 간이 체크 (clang --syntax-only)
+    if (isSC) {
       if (which('clang++')) {
         linter = 'clang++';
-        // SystemC 헤더 경로: 환경변수 SYSTEMC_INCLUDE (콜론 구분 다중 경로 지원)
-        // 예) SYSTEMC_INCLUDE=/opt/systemc/include:/usr/local/systemc/include
-        // 미설정 시 표준 경로(/usr/include/systemc) 사용
         const sysc_paths = (envVars.SYSTEMC_INCLUDE || process.env.SYSTEMC_INCLUDE
                             || '/usr/include/systemc');
         const includeArgs = [];
@@ -201,7 +237,10 @@ const server = http.createServer(async (req, res) => {
           const t = p.trim();
           if (t) includeArgs.push('-I', t);
         });
-        args = ['--syntax-only', '-std=c++17', ...includeArgs, tmpFile];
+        // 임시 디렉토리도 -I 로 추가 (다른 파일이 헤더로 동반 처리)
+        includeArgs.push('-I', tmpDir);
+        // clang++ 은 단일 .cpp 컴파일 단위만 받으므로 target 만 주 입력
+        args = ['--syntax-only', '-std=c++17', ...includeArgs, targetPath];
       } else {
         cleanup();
         res.writeHead(200, {'Content-Type':'application/json'});
@@ -210,13 +249,13 @@ const server = http.createServer(async (req, res) => {
         return;
       }
     } else {
-      // Verilog/SV: verible 우선, 없으면 iverilog
+      // Verilog/SV: 다중 파일 모두 인자로 (verible/iverilog 모두 지원)
       if (which('verible-verilog-syntax')) {
         linter = 'verible-verilog-syntax';
-        args   = ['--error_on_unimplemented', tmpFile];
+        args   = ['--error_on_unimplemented', ...allPaths];
       } else if (which('iverilog')) {
         linter = 'iverilog';
-        args   = ['-t', 'null', '-Wall', tmpFile];
+        args   = ['-t', 'null', '-Wall', ...allPaths];
       } else {
         cleanup();
         res.writeHead(200, {'Content-Type':'application/json'});
@@ -226,29 +265,37 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
-    execFile(linter, args, { timeout: 15000 }, (err, stdout, stderr) => {
-      cleanup();
+    execFile(linter, args, { timeout: 30000 }, (err, stdout, stderr) => {
       const output = (stderr || stdout || '').trim();
-      console.log(`[lint] ${linter} → exit=${err?.code ?? 0}  output=${output.slice(0,120)}`);
+      console.log(`[lint] ${linter} files=${allPaths.length} target=${targetName} exit=${err?.code ?? 0} output=${output.slice(0,120)}`);
+      cleanup();
 
-      // 오류 파싱: "file:line:col: error: msg" 형태
+      // === 결과 파싱 — 타깃 파일 경로의 오류만 필터링 ===
       const errors   = [];
       const warnings = [];
-      const lineRe   = /(?:.*?):(\d+):(\d+)?:?\s*(error|warning|note):\s*(.+)/gi;
+      const targetBasename = path.basename(targetPath);
+      const lineRe = /^(.*?):(\d+):(?:(\d+):)?\s*(error|warning|note):\s*(.+)$/gim;
       let m;
       while ((m = lineRe.exec(output)) !== null) {
-        const item = { line: parseInt(m[1]), col: parseInt(m[2]||'0'), msg: m[4].trim() };
-        if (m[3].toLowerCase() === 'error') errors.push(item);
-        else if (m[3].toLowerCase() === 'warning') warnings.push(item);
+        const fileInMsg = path.basename((m[1]||'').trim());
+        if (fileInMsg !== targetBasename) continue;  // 다른 파일 오류는 무시
+        const item = {
+          line: parseInt(m[2]),
+          col:  parseInt(m[3]||'0'),
+          msg:  m[5].trim(),
+        };
+        if (m[4].toLowerCase() === 'error') errors.push(item);
+        else if (m[4].toLowerCase() === 'warning') warnings.push(item);
       }
-      // verible는 다른 포맷일 수 있으므로 raw도 포함
+
       res.writeHead(200, {'Content-Type':'application/json'});
       res.end(JSON.stringify({
-        ok:       errors.length === 0,
+        ok:           errors.length === 0,
         errors,
         warnings,
-        raw:      output,
+        raw:          output,
         linter,
+        files_count:  allPaths.length,
       }));
     });
     return;

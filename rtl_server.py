@@ -356,37 +356,77 @@ async def call_hook(body: HookRequest):
 # Lint (Verilog / SystemC)
 # ════════════════════════════════════════════════════════════
 
+class LintFile(BaseModel):
+    name:    str
+    content: str
+
+
 class LintRequest(BaseModel):
-    code:     str
-    filename: Optional[str] = "unnamed"
-    lang:     str           = "rtl"   # 'rtl' | 'systemc'
+    # 신규 다중 파일 모드 (권장) — files + target
+    files:    Optional[list[LintFile]] = None
+    target:   Optional[str]            = None   # 결과를 필터링할 파일 이름
+
+    # 구버전 단일 파일 모드 (하위 호환)
+    code:     Optional[str]            = None
+    filename: Optional[str]            = "unnamed"
+
+    lang:     str = "rtl"   # 'rtl' | 'systemc'
 
 
 def _which(cmd: str) -> bool:
     return shutil.which(cmd) is not None
 
 
+def _safe_name(name: str) -> str:
+    """파일 이름에서 경로 구분자/상위 디렉토리 제거 (디렉토리 traversal 방지)"""
+    return os.path.basename(name).replace("..", "_") or "unnamed"
+
+
 @app.post("/lint")
 async def lint_code(body: LintRequest):
-    ext = ".cpp" if body.lang == "systemc" else (
-        ".sv" if (body.filename or "").endswith(".sv") else ".v"
+    # === 입력 정규화 — files 모드와 code 모드 둘 다 지원 ===
+    is_systemc = body.lang == "systemc"
+    default_ext = ".cpp" if is_systemc else (
+        ".sv" if (body.target or body.filename or "").endswith(".sv") else ".v"
     )
 
-    with tempfile.NamedTemporaryFile(
-        suffix=ext, prefix="rtl_lint_", mode="w",
-        encoding="utf-8", delete=False
-    ) as tmp:
-        tmp.write(body.code)
-        tmp_path = tmp.name
+    if body.files:
+        files = list(body.files)
+        target_name = body.target or (files[0].name if files else "unnamed")
+    elif body.code is not None:
+        # 구버전 단일 파일
+        files = [LintFile(name=body.filename or f"unnamed{default_ext}", content=body.code)]
+        target_name = body.filename or files[0].name
+    else:
+        return {"ok": False, "errors": [{"line": 0, "col": 0, "msg": "files/code 누락"}],
+                "warnings": [], "raw": "", "linter": ""}
 
+    # 모든 파일을 임시 디렉토리에 풀고 lint 도구에 다중 파일로 전달
+    tmpdir = tempfile.mkdtemp(prefix="rtl_lint_")
     try:
-        if body.lang == "systemc":
+        all_paths: list[str] = []
+        target_path: Optional[str] = None
+        for f in files:
+            safe_basename = _safe_name(f.name)
+            # 확장자 보정 (없으면 기본값)
+            if not os.path.splitext(safe_basename)[1]:
+                safe_basename += default_ext
+            p = os.path.join(tmpdir, safe_basename)
+            with open(p, "w", encoding="utf-8") as fp:
+                fp.write(f.content)
+            all_paths.append(p)
+            if f.name == target_name:
+                target_path = p
+        if target_path is None and all_paths:
+            target_path = all_paths[0]
+            target_name = os.path.basename(target_path)
+
+        if is_systemc:
             if not _which("clang++"):
                 return {"ok": True, "errors": [], "warnings": [],
                         "note": "clang++ 미설치 — lint 건너뜀"}
             linter = "clang++"
             # SystemC 헤더 경로: 환경변수 SYSTEMC_INCLUDE (콜론 구분 다중 경로 지원)
-            # 예) SYSTEMC_INCLUDE=/opt/systemc/include:/usr/local/systemc/include
             # 미설정 시 표준 경로(/usr/include/systemc) 사용
             sysc_paths = (load_env().get("SYSTEMC_INCLUDE")
                           or os.environ.get("SYSTEMC_INCLUDE")
@@ -396,14 +436,19 @@ async def lint_code(body: LintRequest):
                 p = p.strip()
                 if p:
                     include_args.extend(["-I", p])
-            args = ["--syntax-only", "-std=c++17", *include_args, tmp_path]
+            # SystemC: 임시 디렉토리도 -I 로 추가해서 다른 파일이 헤더로 동반 처리될 수 있게
+            include_args.extend(["-I", tmpdir])
+            # clang++ 은 단일 .cpp 컴파일 단위만 받으므로 target 만 주 입력으로,
+            # 다른 파일은 include path 로만 노출 (헤더 의존성 해결).
+            args = ["--syntax-only", "-std=c++17", *include_args, target_path]
         else:
+            # Verilog/SystemVerilog: 다중 파일을 모두 인자로 넘김 (verible/iverilog 모두 지원)
             if _which("verible-verilog-syntax"):
                 linter = "verible-verilog-syntax"
-                args   = ["--error_on_unimplemented", tmp_path]
+                args   = ["--error_on_unimplemented", *all_paths]
             elif _which("iverilog"):
                 linter = "iverilog"
-                args   = ["-t", "null", "-Wall", tmp_path]
+                args   = ["-t", "null", "-Wall", *all_paths]
             else:
                 return {"ok": True, "errors": [], "warnings": [],
                         "note": "verible/iverilog 미설치 — lint 건너뜀"}
@@ -411,31 +456,39 @@ async def lint_code(body: LintRequest):
         result = await asyncio.to_thread(
             subprocess.run,
             [linter, *args],
-            capture_output=True, text=True, timeout=15
+            capture_output=True, text=True, timeout=30
         )
         output = (result.stderr or result.stdout or "").strip()
-        log.info(f"[lint] {linter} exit={result.returncode}  {output[:120]}")
+        log.info(f"[lint] {linter} files={len(all_paths)} target={target_name} exit={result.returncode}  {output[:120]}")
 
+        # === 결과 파싱 — 타깃 파일 경로의 오류만 필터링 ===
+        # 다른 파일의 오류는 사용자가 변환 안 한 파일이라 무관.
         errors, warnings = [], []
+        target_basename = os.path.basename(target_path) if target_path else ""
         for m in re.finditer(
-            r"(?:.*?):(\d+):(\d+)?:?\s*(error|warning|note):\s*(.+)",
-            output, re.IGNORECASE
+            r"^(.*?):(\d+):(?:(\d+):)?\s*(error|warning|note):\s*(.+)$",
+            output, re.IGNORECASE | re.MULTILINE
         ):
-            item = {"line": int(m.group(1)),
-                    "col":  int(m.group(2) or 0),
-                    "msg":  m.group(4).strip()}
-            (errors if m.group(3).lower() == "error" else warnings).append(item)
+            file_in_msg = os.path.basename(m.group(1).strip())
+            # 타깃 파일에서 발생한 오류만 수집
+            if file_in_msg != target_basename:
+                continue
+            item = {"line": int(m.group(2)),
+                    "col":  int(m.group(3) or 0),
+                    "msg":  m.group(5).strip()}
+            (errors if m.group(4).lower() == "error" else warnings).append(item)
 
         return {"ok": len(errors) == 0,
                 "errors": errors, "warnings": warnings,
-                "raw": output, "linter": linter}
+                "raw": output, "linter": linter,
+                "files_count": len(all_paths)}
 
     except subprocess.TimeoutExpired:
         return {"ok": False, "errors": [{"line": 0, "col": 0,
-                "msg": "lint 타임아웃 (15s)"}], "warnings": [], "raw": "", "linter": ""}
+                "msg": "lint 타임아웃 (30s)"}], "warnings": [], "raw": "", "linter": ""}
     finally:
         try:
-            os.unlink(tmp_path)
+            shutil.rmtree(tmpdir, ignore_errors=True)
         except Exception:
             pass
 

@@ -118,6 +118,15 @@ textarea::placeholder{color:var(--text3);}
 .rtab.active{color:var(--accent);border-bottom-color:var(--accent);}
 .rtab.ok{color:var(--green);}.rtab.ok.active{border-bottom-color:var(--green);}
 .rtab.er{color:var(--red);}
+/* 변환 자체는 성공했으나 lint 오류가 남은 상태 — 변환 OK(초록) 와 미변경(회색),
+   변환 실패(빨강) 어느 것과도 다르게 시각 구분 (주황) */
+.rtab.okwl{color:var(--amber);}.rtab.okwl.active{border-bottom-color:var(--amber);}
+.rtab.okwl::after{content:" ⚠";font-size:10px;}
+/* 변환 OK 였으나 lint 가 도구 미설치 등으로 실행 안 됨 — '통과'로 보이지 않게 별도 표시.
+   회색이지만 변환은 됐다는 의미로 점선 underline + 마커 추가. */
+.rtab.oksk{color:var(--text2);border-bottom:2px dashed var(--text3);}
+.rtab.oksk.active{color:var(--accent);border-bottom-color:var(--accent);border-bottom-style:solid;}
+.rtab.oksk::after{content:" —";font-size:10px;color:var(--text3);}
 .result-area{flex:1;font-family:var(--mono);font-size:13px;line-height:1.75;background:var(--bg);color:var(--text);overflow:auto;padding:11px 14px;white-space:pre;font-feature-settings:"liga" 0,"calt" 0;font-variant-ligatures:none;}
 .hl-a{background:rgba(106,184,255,.10);display:block;}
 .hl-u{background:rgba(176,144,232,.10);display:block;}
@@ -1049,6 +1058,12 @@ function goStep(n){
   const nb=document.getElementById('nextBtn');
   nb.style.display='';
   nb.textContent=LABELS[Math.min(n,LABELS.length-1)];
+  // 단계 이동 시 nextBtn 활성 상태 보장 — 변환 중 disable 됐던 상태가 남아있어도 해제.
+  // 변환이 진짜로 진행 중이라면 _runBatchNow 가 다시 disable 시킴.
+  // (_batchAborted=true 이거나 runMode 가 아니라 실제 변환이 안 도는 상황을 가정)
+  if (!_batchAbortController) {
+    nb.disabled = false;
+  }
   try { refreshAutoParams(); } catch(e) { console.warn(e); }
   // Summary 단계 진입 시 항상 갱신
   if (n === 3) { try { buildSummary(); } catch(e) { console.warn(e); } }
@@ -2360,21 +2375,18 @@ let _batchAborted = false;
 let _batchAbortController = null;
 
 function stopBatch() {
-  _batchAborted = true;
+  // 변환 단계가 실제로 시작됐는지 확인 — 그래야 ↺ 이어서 변환 노출 의미가 있음
+  const convStarted = (typeof rtlFiles !== 'undefined') &&
+                      rtlFiles.some(f => f.status === 'run' || f.status === 'ok' || f.status === 'err');
 
-  // 진행 중인 callLLM / fetch 즉시 abort — stuck 상태에서도 빠져나옴
-  if (_batchAbortController) {
-    try { _batchAbortController.abort(); } catch(_) {}
-    _batchAbortController = null;
-  }
+  // _resetAllFreezeStates 가 _batchAborted=true, _batchAbortController.abort(),
+  // nextBtn / stopBtn / resumeBtn / preClarify 모달 모두 정리.
+  _resetAllFreezeStates({
+    keepResumeBtn: convStarted,
+    statusMsg: '중단됨 — 진행 중인 LLM 호출 취소됨',
+  });
 
-  monSetStatus('중단됨 — 진행 중인 LLM 호출 취소됨', 'var(--amber)');
   dbgLog('INF', '사용자가 변환 중단 요청 — 진행 중인 LLM 호출 abort', 'inf');
-  document.getElementById('stopBtn').style.display = 'none';
-  showResumeBtn();   // 재시도 가능하도록 ↺ 이어서 변환 노출
-
-  const _nb = document.getElementById('nextBtn');
-  if (_nb) { _nb.disabled = false; _nb.textContent = _nb.dataset.origText || '▶ 재변환'; }
 }
 
 async function resumeBatch() {
@@ -2860,6 +2872,59 @@ function _llmAbort(key) {
   dbgLog('INF', `[abort] ${key} 중단됨`, 'inf');
 }
 
+// 분석/변환 진행 중 freeze 된 모든 UI 상태를 idle 로 복구.
+// 일괄 실행 중단 / 부분 완료 후 사용자가 다음 단계를 다시 시작할 수 있도록 정리.
+//
+// 정리 대상:
+//   1. _llmFreeze 로 잠긴 모든 키 (algo-analyze / uarch-analyze / sum-analyze / iter-* )
+//   2. 변환 중 _batchAbortController 와 nextBtn / stopBtn / resumeBtn
+//   3. 사전 검토 모달 (열려있다면 닫기)
+//   4. 진행 모니터 status
+//
+// 호출 시점: stopAutoRun(), 그리고 변환 도중 외부 abort 가 발생한 직후.
+function _resetAllFreezeStates(opts = {}) {
+  const { keepResumeBtn = false, statusMsg = null } = opts;
+
+  // 1. 모든 _llmFreeze 키 복구 (abort 신호도 함께 발사 — 진행 중 fetch 가 있으면 throw)
+  Object.keys(_llmAborts).slice().forEach(k => {
+    try { _llmAborts[k].controller.abort(); } catch(_) {}
+    _llmUnfreeze(k);
+  });
+
+  // 2. 변환 컨트롤러 정리
+  if (_batchAbortController) {
+    try { _batchAbortController.abort(); } catch(_) {}
+    _batchAbortController = null;
+  }
+  _batchAborted = true;   // 진행 중인 루프가 다음 iteration 에서 빠져나오게
+
+  // 변환 중 nextBtn 복구
+  const _nb = document.getElementById('nextBtn');
+  if (_nb) {
+    _nb.disabled = false;
+    if (_nb.dataset.origText) _nb.textContent = _nb.dataset.origText;
+  }
+
+  // 변환 중 ■ 중단 / ↺ 이어서 버튼 표시 정리
+  const stopBtn   = document.getElementById('stopBtn');
+  const resumeBtn = document.getElementById('resumeBtn');
+  if (stopBtn)   stopBtn.style.display   = 'none';
+  if (resumeBtn) resumeBtn.style.display = keepResumeBtn ? '' : 'none';
+
+  // 3. 사전 검토 모달 정리 (열려있던 경우)
+  if (_preClarifyAbortController) {
+    try { _preClarifyAbortController.abort(); } catch(_) {}
+    _preClarifyAbortController = null;
+  }
+  const pcm = document.getElementById('preClarifyModal');
+  if (pcm && pcm.style.display !== 'none') pcm.style.display = 'none';
+
+  // 4. 모니터 status
+  if (statusMsg && typeof monSetStatus === 'function') {
+    try { monSetStatus(statusMsg, 'var(--amber)'); } catch(_) {}
+  }
+}
+
 // ── JSON 추출 공통 헬퍼 ───────────────────────────────────
 // LLM 응답에서 JSON 객체를 안전하게 추출
 // 처리 순서:
@@ -2962,6 +3027,48 @@ function parseResult(raw, fname) {
 }
 
 // CHANGES 라인 파싱: "SOURCE|TYPE|IDS|description" 또는 레거시 "SOURCE|TYPE|description"
+// SOURCE 별칭 정규화 — LLM 이 자유롭게 변형해도 받아들이도록 alias 매핑
+//   RTL: 모호 — IDS 접두어를 보고 ALGO/UARCH/BOTH 로 추론 (caller 가 처리)
+//   ARCHITECTURE / μARCH / ARCHITECTURAL → UARCH
+//   ALGORITHM / ALGO → ALGO
+//   ITERATION / ITER → ITER
+const _SOURCE_ALIASES = {
+  'ALGORITHM': 'ALGO',  'ALGORITHMIC': 'ALGO',
+  'ARCHITECTURE': 'UARCH',  'ARCHITECTURAL': 'UARCH',  'MICROARCHITECTURE': 'UARCH',  'MICROARCH': 'UARCH',
+  'ITERATION': 'ITER',
+  'LINTING': 'LINT',  'LINTER': 'LINT',
+};
+
+// TYPE 별칭 정규화 — LLM 변형 흡수
+//   MODIFY/MODIFIED/CHANGE/CHANGED/UPDATE/UPDATED → MOD
+//   ADDED/INSERT → ADD
+//   REMOVED/DELETE/DELETED/DROP → REMOVE
+//   FIXED/CORRECT/CORRECTED → FIX
+const _TYPE_ALIASES = {
+  'MODIFY': 'MOD',  'MODIFIED': 'MOD',  'MODIFICATION': 'MOD',
+  'CHANGE': 'MOD',  'CHANGED': 'MOD',
+  'UPDATE': 'MOD',  'UPDATED': 'MOD',
+  'ADDED': 'ADD',  'INSERT': 'ADD',  'INSERTED': 'ADD',  'NEW': 'ADD',
+  'REMOVED': 'REMOVE',  'DELETE': 'REMOVE',  'DELETED': 'REMOVE',  'DROP': 'REMOVE',  'DROPPED': 'REMOVE',
+  'FIXED': 'FIX',  'CORRECT': 'FIX',  'CORRECTED': 'FIX',
+};
+
+// IDS 필드에서 접두어 분포를 보고 SOURCE 추론
+// (RTL 같은 모호한 SOURCE 가 들어왔을 때 사용)
+function _inferSourceFromIds(idsRaw) {
+  if (!idsRaw) return 'BOTH';
+  const ids = idsRaw.toUpperCase().split(',').map(s => s.trim()).filter(Boolean);
+  let hasAlgo = false, hasArch = false;
+  ids.forEach(id => {
+    if (/^ALGO-/.test(id)) hasAlgo = true;
+    else if (/^(ARCH|UARCH)-/.test(id)) hasArch = true;
+  });
+  if (hasAlgo && hasArch) return 'BOTH';
+  if (hasAlgo) return 'ALGO';
+  if (hasArch) return 'UARCH';
+  return 'BOTH';   // 추론 불가 — 가장 포괄적인 값
+}
+
 function parseChangeLine(line) {
   // 빈 라인 / 주석 / 구분선 거부
   const trimmed = (line || '').trim();
@@ -2980,8 +3087,19 @@ function parseChangeLine(line) {
   // ARCH 와 UARCH 는 동의어로 취급 — LLM 이 ID 접두어(ARCH-NNN)와 맞춰 SOURCE 도 ARCH 로 쓰는 케이스 빈발
   const VALID_SOURCES = new Set(['ALGO','UARCH','ARCH','BOTH','ITER','LINT']);
   const VALID_TYPES   = new Set(['ADD','MOD','REMOVE','FIX']);
-  const source = parts[0].trim().toUpperCase();
-  const type   = parts[1].trim().toUpperCase();
+  let source = parts[0].trim().toUpperCase();
+  let type   = parts[1].trim().toUpperCase();
+
+  // === alias 정규화 ===
+  // SOURCE: alias 매핑 우선 적용. 'RTL' 같은 모호한 값은 IDS 보고 추론.
+  if (_SOURCE_ALIASES[source]) {
+    source = _SOURCE_ALIASES[source];
+  } else if (source === 'RTL') {
+    // RTL 은 SOURCE 로서 모호 — IDS 접두어로 추론
+    source = _inferSourceFromIds(parts.length >= 4 ? parts[2] : '');
+  }
+  // TYPE: alias 매핑 (MODIFY → MOD 등)
+  if (_TYPE_ALIASES[type]) type = _TYPE_ALIASES[type];
 
   // === "변경 없음" 라인 인식 ===
   // 케이스 A: SOURCE 와 TYPE 둘 다 NONE → 파일 전체가 변경 없음
@@ -4811,12 +4929,27 @@ function confirmAutoRun() {
 
 function stopAutoRun() {
   _autoRunAborted = true;
-  // 진행 중인 LLM 호출도 모두 중단
-  ['algo-analyze', 'uarch-analyze', 'sum-analyze'].forEach(k => _llmAbort(k));
-  _batchAborted = true;
+
+  // 변환 단계에 진입했는지(= 일부 파일이라도 변환 시도됐는지) 확인 →
+  // 그렇다면 ↺ 이어서 변환 버튼을 노출해서 재개 가능하게.
+  const convStarted = (typeof rtlFiles !== 'undefined') &&
+                      rtlFiles.some(f => f.status === 'run' || f.status === 'ok' || f.status === 'err');
+
+  // 모든 freeze 상태 일괄 정리 — 분석 버튼 + 변환 버튼 + 모달 모두
+  _resetAllFreezeStates({
+    keepResumeBtn: convStarted,
+    statusMsg: convStarted
+      ? '중단됨 — Summary 단계에서 ▶ RTL 변환 재시도 가능'
+      : '중단됨 — 분석 단계로 돌아가서 다시 시도 가능',
+  });
+
+  // 일괄 실행 플래그 정리 — 다른 함수가 더 이상 자동 모드로 동작하지 않게
+  window._autoRunActive      = false;
+  window._autoRunInteractive = true;
+
   autoRunSetStatus('⚠ 사용자 중단', 'var(--amber)');
   autoRunOverlayDone();
-  dbgLog('INF', '[auto-run] 사용자 중단', 'inf');
+  dbgLog('INF', `[auto-run] 사용자 중단 — convStarted=${convStarted}`, 'inf');
 }
 
 // ── 오버레이 헬퍼 ────────────────────────────────────────
@@ -4964,6 +5097,12 @@ async function _runAutoRunPipeline(opts = {}) {
         el.querySelector('.mon-icon').innerHTML = '✕';
       }
     });
+    // 어떤 이유로 중단/실패하든 freeze 된 모든 버튼을 idle 로 복구해서
+    // 사용자가 Summary 페이지의 ▶ RTL 변환 등을 다시 누를 수 있게 함.
+    // (stopAutoRun 이 이미 정리했어도 다시 호출해도 부작용 없음.)
+    const convStarted = (typeof rtlFiles !== 'undefined') &&
+                        rtlFiles.some(f => f.status === 'run' || f.status === 'ok' || f.status === 'err');
+    _resetAllFreezeStates({ keepResumeBtn: convStarted });
   } finally {
     autoRunOverlayDone();
     // 일괄 실행 종료 — 다른 함수가 더 이상 자동 모드로 동작하지 않도록 정리
@@ -5302,22 +5441,40 @@ function missingModuleResolve(decision) {
 
 async function lintFile(code, filename, signal = null) {
   const host = (document.getElementById('oHost').value || '').replace(/\/+$/, '');
-  // dev 서버 포트 — _devPort로 자동 감지 (3000 또는 3030)
   const lintUrl = devUrl('/lint');
   const lang = getLang().extractSig === 'systemc' ? 'systemc' : 'rtl';
+
+  // === 모든 RTL 파일을 의존성 컨텍스트로 동반 전송 ===
+  // 단일 파일만 보내면 다른 파일에 정의된 module 참조가 모두 missing 으로 잡힘.
+  // 그래서 전체 RTL 파일을 묶어 보내되, 각 파일은 가장 최신 버전 사용:
+  //   - 변환 완료된 파일 (status='ok' + result 존재): result 사용
+  //   - 변환 실패 또는 미변경 파일: 원본 content 사용
+  // lint 도구는 모두 컴파일 단위로 받지만, 결과는 'filename'(타깃) 기준으로 필터.
+  const files = (typeof rtlFiles !== 'undefined' ? rtlFiles : []).map(f => ({
+    name:    f.name,
+    content: (f.status === 'ok' && f.result) ? f.result : f.content,
+  }));
+
+  // 타깃 파일은 인자로 받은 code 로 덮어쓴다 (autoFixLint 가 수정한 가장 최신본).
+  const targetIdx = files.findIndex(f => f.name === filename);
+  if (targetIdx >= 0) {
+    files[targetIdx] = { name: filename, content: code };
+  } else {
+    files.push({ name: filename, content: code });
+  }
 
   try {
     const res = await fetch(lintUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code, filename, lang }),
-      signal,                              // 사용자 ■ 중단 버튼이 abort 가능
+      body: JSON.stringify({ files, target: filename, lang, code, filename }),
+      // ↑ 'code'/'filename' 은 구버전 서버 호환용 (서버가 files 를 모르면 이 둘로 fallback)
+      signal,
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.json();
   } catch (e) {
-    if (e.name === 'AbortError') throw e;  // abort 는 상위로 전달
-    // dev 서버 미실행 또는 연결 불가 → lint 건너뜀
+    if (e.name === 'AbortError') throw e;
     dbgLog('INF', `[lint] 서버 연결 불가 — 건너뜀 (${e.message})`, 'inf');
     return { ok: true, errors: [], warnings: [], note: `lint 서버 연결 불가: ${e.message}` };
   }
@@ -5384,6 +5541,8 @@ async function lintAndFix(f, host, model, stepId) {
 
     if (lintResult.note) {
       dbgLog('INF', `[lint] ${f.name}: ${lintResult.note}`, 'inf');
+      // 모니터 detail 에도 skip 명시 — '✓ 통과' 처럼 보이지 않도록 별도 메시지
+      try { monUpdateDetail(stepId, `lint skip — ${lintResult.note}`); } catch(_) {}
       return;  // lint 불가 → 그냥 통과
     }
 
@@ -5800,8 +5959,15 @@ Rules:
     <complete modified ${getLang().fileDesc} code>
     ===CHANGES: <filename>===
     SOURCE|TYPE|IDS|description
-    (IDS=comma-separated impact IDs, e.g. ALGO-001,ARCH-002; NONE if not traceable)
     (repeat for each file)
+- SOURCE must be ONE of: ALGO, UARCH, BOTH, ITER, LINT, NONE
+      (do NOT use 'RTL', 'ARCHITECTURE', 'ALGORITHM', or any other value)
+- TYPE must be ONE of: ADD, MOD, REMOVE, FIX, NONE
+      (do NOT use 'MODIFY', 'MODIFIED', 'CHANGE', 'UPDATED', 'CHANGED' — use MOD instead)
+- IDS = comma-separated impact IDs (e.g. ALGO-001,ARCH-002), NONE if not traceable.
+- Examples of CORRECT lines:
+      ALGO|MOD|ALGO-001|Increased LUT array size from 46 to 33
+      BOTH|MOD|ALGO-003,ARCH-001|Widened DBV band boundary and PWM port width
 - If a file has NO changes (e.g. none of the change points are relevant to it),
   still emit its ===FILE: ... === section with the original content unchanged,
   and emit a single CHANGES line: NONE|NONE|NONE|<brief reason>
@@ -5949,9 +6115,21 @@ Rules:
 - Do NOT change coding style, spacing conventions, or formatting of unmodified lines
 - If a change is unavoidable in adjacent lines for correctness (e.g. port list alignment), keep it minimal and note it in CHANGES
 - After the code, output exactly: ===CHANGES===
-- Then list each change: SOURCE|TYPE|IDS|description
-  (SOURCE=ALGO/UARCH/BOTH, TYPE=ADD/MOD/REMOVE,
-   IDS=comma-separated impact IDs from the change points above, e.g. ALGO-001,ARCH-002; use NONE if not traceable)
+- Then list each change on its own line, using EXACTLY this format:
+      SOURCE|TYPE|IDS|description
+- SOURCE must be ONE of: ALGO, UARCH, BOTH, ITER, LINT, NONE
+      (do NOT use 'RTL', 'ARCHITECTURE', 'ALGORITHM', or any other value)
+- TYPE must be ONE of: ADD, MOD, REMOVE, FIX, NONE
+      (do NOT use 'MODIFY', 'MODIFIED', 'CHANGE', 'UPDATED', 'CHANGED' — use MOD instead)
+- IDS = comma-separated impact IDs from the change points above (e.g. ALGO-001,ARCH-002)
+      Use NONE if no specific ID applies, or if marking that IDs are not applicable to this file.
+- Examples of CORRECT lines:
+      ALGO|MOD|ALGO-001|Increased LUT array size from 46 to 33
+      BOTH|MOD|ALGO-003,ARCH-001|Widened DBV band boundary and PWM port width
+      UARCH|REMOVE|ARCH-009|Removed deprecated config port
+- Examples of INCORRECT lines (do NOT use these formats):
+      RTL|MODIFY|...        ← wrong SOURCE, wrong TYPE
+      ALGO|UPDATED|...      ← wrong TYPE, use MOD
 - If NO changes were applied to this file (e.g. none of the change points are relevant),
   output a single line: NONE|NONE|NONE|<brief reason why no changes were needed>
   In this case, the code section above must be the original file, unchanged.
@@ -5969,8 +6147,29 @@ ${rtl}`;
 // ── Result render ─────────────────────────────────────────
 function renderResTabs(){
   document.getElementById('resTabs').innerHTML=rtlFiles.map((f,i)=>{
-    const cls=f.status==='ok'?'ok':f.status==='err'?'er':'';
-    return`<button class="rtab ${cls} ${i===resActive?'active':''}" onclick="showRes(${i})">${esc(f.name)}</button>`;
+    // 우선순위:
+    //   변환 실패          → er (빨강)
+    //   변환 OK + lint 오류 → okwl (앰버 + ⚠)
+    //   변환 OK + lint skip → oksk (점선 — lint 통과처럼 보이지 않게)
+    //   변환 OK + lint 통과 → ok (초록)
+    //   그 외(wait/run)    → '' (회색 기본)
+    let cls = '';
+    let titleMsg = '';
+    if (f.status === 'err') {
+      cls = 'er';
+    } else if (f.status === 'ok') {
+      if (f.lintResult?.note) {
+        cls = 'oksk';
+        titleMsg = `변환 완료 — lint skip (${f.lintResult.note})`;
+      } else if (f.lintResult?.errors?.length > 0) {
+        cls = 'okwl';
+        titleMsg = `변환 완료 — lint 오류 ${f.lintResult.errors.length}개 검토 필요`;
+      } else {
+        cls = 'ok';
+      }
+    }
+    const titleAttr = titleMsg ? `title="${esc(titleMsg)}"` : '';
+    return `<button class="rtab ${cls} ${i===resActive?'active':''}" ${titleAttr} onclick="showRes(${i})">${esc(f.name)}</button>`;
   }).join('');
 }
 function showRes(idx){
@@ -6077,10 +6276,13 @@ function showRes(idx){
         <div class="dot ${f.status==='ok'||f.status==='lint-warn'?'g':''}" style="${f.status==='err'?'background:var(--red)':''}"></div>
         ${esc(f.name)}
         ${f.history?.length ? `<span style="font-family:var(--mono);font-size:12px;color:var(--amber);margin-left:6px;">${f.history.length}회 개선됨</span>` : ''}
-        ${f.lintResult && !f.lintResult.note ? (
-          f.lintResult.ok
-            ? `<span style="font-family:var(--mono);font-size:10px;padding:1px 6px;border-radius:3px;background:rgba(78,232,158,.15);color:var(--green);margin-left:6px;">✓ lint</span>`
-            : `<span style="font-family:var(--mono);font-size:10px;padding:1px 6px;border-radius:3px;background:rgba(255,107,117,.15);color:var(--red);margin-left:6px;">⚠ lint ${f.lintResult.errors.length}개 오류</span>`
+        ${f.lintResult ? (
+          f.lintResult.note
+            // lint 도구 미설치 / 연결 불가 등으로 lint 자체가 실행 안 됨 — '통과'와 구별
+            ? `<span style="font-family:var(--mono);font-size:10px;padding:1px 6px;border-radius:3px;background:var(--s2);color:var(--text3);border:1px solid var(--border);margin-left:6px;" title="${esc(f.lintResult.note)}">— lint skip</span>`
+            : f.lintResult.ok
+              ? `<span style="font-family:var(--mono);font-size:10px;padding:1px 6px;border-radius:3px;background:rgba(78,232,158,.15);color:var(--green);margin-left:6px;">✓ lint</span>`
+              : `<span style="font-family:var(--mono);font-size:10px;padding:1px 6px;border-radius:3px;background:rgba(255,107,117,.15);color:var(--red);margin-left:6px;">⚠ lint ${f.lintResult.errors.length}개 오류</span>`
         ) : ''}
         ${audit.ok && f.changes.length
           ? `<span style="font-family:var(--mono);font-size:10px;padding:1px 6px;border-radius:3px;background:rgba(78,232,158,.12);color:var(--green);margin-left:4px;" title="CHANGES 와 코드 인라인 ID 일치">✓ ID</span>`
@@ -6113,6 +6315,16 @@ function showRes(idx){
         </div>
         <div style="flex:1;overflow-y:auto;padding:8px 10px;display:flex;flex-direction:column;gap:6px;">
           ${auditHtml}
+          ${f.lintResult && f.lintResult.note ? `
+          <div style="border-radius:5px;border:1px solid var(--border);overflow:hidden;margin-bottom:4px;background:var(--s2);">
+            <div style="padding:5px 8px;font-family:var(--mono);font-size:10px;font-weight:600;color:var(--text3);">
+              lint skip — 검증 미실행
+            </div>
+            <div style="padding:5px 8px;border-top:1px solid var(--border);font-family:var(--mono);font-size:10px;color:var(--text3);line-height:1.5;">
+              ${esc(f.lintResult.note)}<br>
+              <span style="color:var(--text3);opacity:.7;">※ lint 가 실행되지 않아 문법/포트 오류 검증이 안 된 상태입니다. 도구 설치 후 재시도하거나 수동 검토 필요.</span>
+            </div>
+          </div>` : ''}
           ${f.lintResult && !f.lintResult.note && (f.lintResult.errors.length || f.lintResult.warnings.length) ? `
           <div style="border-radius:5px;border:1px solid ${f.lintResult.ok ? 'rgba(78,232,158,.3)' : 'rgba(255,107,117,.3)'};overflow:hidden;margin-bottom:4px;">
             <div style="padding:5px 8px;background:${f.lintResult.ok ? 'rgba(78,232,158,.08)' : 'rgba(255,107,117,.08)'};font-family:var(--mono);font-size:10px;font-weight:600;color:${f.lintResult.ok ? 'var(--green)' : 'var(--red)'};">
