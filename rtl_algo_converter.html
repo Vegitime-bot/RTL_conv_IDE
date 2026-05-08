@@ -2263,7 +2263,10 @@ function autoCalcNumCtx() {
   const thinkingBuf  = getThinkingBuf();
 
   // ── TO-BE μArch 전문 포함 시 추가 토큰 ───────────────────
-  const newUarchTok  = isIncludeNewUarch() ? estimateTokens(getText('ut')) : 0;
+  // compactUarchForRtl 로 RTL 무관 섹션 제거 후의 실제 토큰 사용 — 화면 추정과 실 전송 일치.
+  const newUarchTok  = isIncludeNewUarch()
+    ? compactUarchForRtl(getText('ut')).newTokens
+    : 0;
 
   // ── 필요 토큰 계산 (입력+출력 × margin + thinking) ───────
   // RTL 변환: 순차(최대 1파일) / 단일(전체 합산)
@@ -3737,12 +3740,25 @@ function buildContextSection() {
       UARCH_TABLE_RULES + '\n' +
       `(Extracted sections most relevant to this ${getLang().fileDesc} file)\n${secTexts}`;
   } else if (isIncludeNewUarch()) {
-    // fallback: 분석 미실행 시 전문 포함 옵션이 켜져 있으면 전문 사용
+    // fallback: 분석 미실행 시 전문 포함 옵션이 켜져 있으면 전문 사용.
+    // 단, RTL 분석/설계와 무관한 섹션(목차/changelog/참조 등)은 휴리스틱으로 제거.
     const utText = getText('ut');
     if (utText.trim()) {
-      uarchRefSection = `=== TO-BE μArch Document (Full) ===\n` +
+      const compacted = compactUarchForRtl(utText.trim());
+      if (compacted.dropped.length) {
+        const saved = compacted.origTokens - compacted.newTokens;
+        const droppedTitles = compacted.dropped.map(d => `${d.title} (~${d.tokens.toLocaleString()}tok)`).join(', ');
+        dbgLog('INF',
+          `[uarch-compact] ${compacted.dropped.length}개 섹션 제거 — `
+          + `~${saved.toLocaleString()}tok 절감 (${compacted.origTokens.toLocaleString()} → ${compacted.newTokens.toLocaleString()}). `
+          + `제거: ${droppedTitles}`,
+          'inf');
+      }
+      uarchRefSection = `=== TO-BE μArch Document (Full, compacted) ===\n` +
         UARCH_TABLE_RULES + '\n' +
-        `(Use this as the authoritative reference for the target micro-architecture.)\n${utText.trim()}`;
+        `(Use this as the authoritative reference for the target micro-architecture. ` +
+        `Sections unrelated to RTL design — table of contents, changelog, references, glossary, etc. — ` +
+        `have been removed to save context.)\n${compacted.text}`;
     }
   }
 
