@@ -5811,16 +5811,64 @@ async function runSequential(ctx, startIdx = 0) {
       try {
         const t0 = Date.now();
         let lastTc = 0;
+        let tokenCount  = 0;
+        let lastChunkAt = t0;
+        let isStalled   = false;
+        let phase       = 'thinking';   // 'thinking' (첫 청크 전) | 'streaming' (청크 흐름 중)
+        let liveTimer   = null;
 
-        const onChunk = (partial) => {
-          f.result = chunkResults.join('\n') + '\n' + partial;
-          const tc = Math.round(partial.length / 3.5);
-          if (tc - lastTc > 50) {
-            lastTc = tc;
-            const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-            monSetTokens(`↓ ~${tc.toLocaleString()} tokens  ${elapsed}s`);
-            monUpdateDetail(chunkStepId, `생성 중… ~${tc.toLocaleString()} tokens`);
+        // ── 1초 주기 live timer (청크 유무와 무관) ──────────
+        // chunk 1개 단위로 timer 동작. callLLM 종료(또는 abort) 시 finally 에서 해제.
+        // Phase 분리:
+        //   thinking  — 첫 청크 전. 5분까지 정상으로 간주 (추론 모델 대응)
+        //   streaming — 청크 흐름 중. 60s+ idle = amber, 180s+ idle = red
+        const tickMonitor = () => {
+          const elapsed = (Date.now() - t0) / 1000;
+          const idle    = (Date.now() - lastChunkAt) / 1000;
+          const tps     = (tokenCount > 0 && elapsed > 0) ? (tokenCount / elapsed) : 0;
+
+          let detail, statusMsg, statusColor;
+
+          if (phase === 'thinking') {
+            if (isStalled) {
+              detail      = `⏳ thinking 길어짐… ${elapsed.toFixed(0)}s (5분 초과)`;
+              statusMsg   = `⏳ LLM thinking ${elapsed.toFixed(0)}s · ${chunkLabel}`;
+              statusColor = 'var(--amber)';
+            } else {
+              detail      = `⏳ LLM 분석 중 (thinking 가능)… ${elapsed.toFixed(0)}s`;
+              statusMsg   = null;   // 헤더 status 는 그대로 유지 (정상 동작)
+            }
+          } else {
+            if (isStalled && idle >= 180) {
+              detail      = `⏸ ${tokenCount.toLocaleString()}tok · ${elapsed.toFixed(0)}s · 무응답 ${idle.toFixed(0)}s`;
+              statusMsg   = `⏸ LLM 무응답 ${idle.toFixed(0)}s · ${chunkLabel}`;
+              statusColor = 'var(--red)';
+            } else if (isStalled) {
+              detail      = `⏸ ${tokenCount.toLocaleString()}tok · ${elapsed.toFixed(0)}s · 청크 대기 ${idle.toFixed(0)}s`;
+              statusMsg   = `⏸ 청크 대기 ${idle.toFixed(0)}s · ${chunkLabel}`;
+              statusColor = 'var(--amber)';
+            } else if (tokenCount > 0) {
+              detail      = `↓ ${tokenCount.toLocaleString()}tok · ${elapsed.toFixed(0)}s · ${tps.toFixed(1)} tok/s`;
+              statusMsg   = null;
+            } else {
+              detail      = `대기 중… ${elapsed.toFixed(0)}s`;
+              statusMsg   = null;
+            }
           }
+          monSetTokens(detail);
+          monUpdateDetail(chunkStepId, detail);
+          if (statusMsg) monSetStatus(statusMsg, statusColor);
+        };
+        liveTimer = setInterval(tickMonitor, 1000);
+        tickMonitor();
+
+        const onChunk = (partial, meta) => {
+          f.result = chunkResults.join('\n') + '\n' + partial;
+          tokenCount  = meta?.tokens ?? Math.round(partial.length / 3.5);
+          lastChunkAt = meta?.lastChunkAt ?? Date.now();
+          phase       = 'streaming';
+          isStalled   = false;
+          // 결과 영역 라이브 렌더링 (기존 로직 유지)
           if (resActive === idx) {
             let rendered = '';
             f.result.split('\n').forEach(line => {
@@ -5834,14 +5882,30 @@ async function runSequential(ctx, startIdx = 0) {
             if (ra) { ra.innerHTML = rendered; ra.scrollTop = ra.scrollHeight; }
           }
         };
+        const onProgress = ({ phase: p, stalled, idleMs }) => {
+          phase     = p || phase;
+          isStalled = stalled;
+          if (phase === 'streaming' && !stalled) lastChunkAt = Date.now() - idleMs;
+        };
 
-        const { raw, finish } = await callLLM(
-          host, model,
-          `${getLang().expert} Follow all instructions exactly.`,
-          prompt, onChunk,
-          'rtl',
-          _batchAbortController?.signal    // 사용자 ■ 중단 버튼이 즉시 abort 가능
-        );
+        let raw, finish;
+        try {
+          ({ raw, finish } = await callLLM(
+            host, model,
+            `${getLang().expert} Follow all instructions exactly.`,
+            prompt, onChunk,
+            'rtl',
+            _batchAbortController?.signal,    // 사용자 ■ 중단 버튼이 즉시 abort 가능
+            {
+              firstByteWarnMs: 300000,   // 5분 (thinking 모델 대응)
+              idleWarnMs:      60000,    // 1분 (사내 슬로우 LLM 의 자연스런 갭)
+              idleAbortMs:     -1,       // 자동 abort 비활성
+              onProgress,
+            }
+          ));
+        } finally {
+          if (liveTimer) clearInterval(liveTimer);
+        }
         const elapsed   = ((Date.now() - t0) / 1000).toFixed(1);
         const outTokens = Math.round(raw.length / 3.5);
         dbgLog('RES', `[${chunkLabel}] ~${outTokens.toLocaleString()}tok  finish=${finish}  ${elapsed}s`, 'res');
@@ -6005,20 +6069,96 @@ ${allRtl}`;
 
   try {
     const t0 = Date.now();
-    let tokenCount = 0;
-    const onChunk = (partial) => {
-      tokenCount = Math.round(partial.length / 3.5);
-      const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-      monSetTokens(`↓ ~${tokenCount.toLocaleString()} tokens  ${elapsed}s`);
-      monUpdateDetail('s-llm', `생성 중… ~${tokenCount.toLocaleString()} tokens  ${elapsed}s`);
-      setStatus('lo', `단일 변환 중… ~${tokenCount.toLocaleString()} tokens`);
+    let tokenCount  = 0;
+    let lastChunkAt = t0;
+    let isStalled   = false;
+    let phase       = 'thinking';   // 'thinking' (첫 청크 전) | 'streaming' (청크 흐름 중)
+    let liveTimer   = null;
+
+    // ── 1초 주기 live timer ────────────────────────────────
+    // 청크 유무와 무관하게 phase 별 메시지를 monPanel 에 갱신.
+    //   thinking  — 첫 청크 전. 추론 모델 thinking / 입력 처리. 5분까지 정상으로 간주
+    //   streaming — 청크 흐름 중. 60s+ idle = amber, 180s+ idle = red
+    const tickMonitor = () => {
+      const elapsed = (Date.now() - t0) / 1000;
+      const idle    = (Date.now() - lastChunkAt) / 1000;
+      const tps     = (tokenCount > 0 && elapsed > 0) ? (tokenCount / elapsed) : 0;
+
+      let detail, statusMsg, statusColor;
+
+      if (phase === 'thinking') {
+        // 첫 청크 받기 전 — 추론 모델은 thinking 단계가 길 수 있어 정상으로 간주
+        if (isStalled) {
+          detail      = `⏳ thinking 길어짐… ${elapsed.toFixed(0)}s (5분 초과)`;
+          statusMsg   = `⏳ LLM thinking ${elapsed.toFixed(0)}s — 정상이지만 시간 길어짐`;
+          statusColor = 'var(--amber)';
+        } else {
+          detail      = `⏳ LLM 분석 중 (thinking 가능)… ${elapsed.toFixed(0)}s`;
+          statusMsg   = `⏳ LLM 분석 중… ${elapsed.toFixed(0)}s`;
+          statusColor = 'var(--text2)';   // 정상 동작 — 강조 안 함
+        }
+      } else {
+        // 청크 흐름 중 — 일반 변환 표시
+        if (isStalled && idle >= 180) {
+          detail      = `⏸ ${tokenCount.toLocaleString()}tok · ${elapsed.toFixed(0)}s · 무응답 ${idle.toFixed(0)}s`;
+          statusMsg   = `⏸ LLM 무응답 ${idle.toFixed(0)}s · 전체 ${elapsed.toFixed(0)}s`;
+          statusColor = 'var(--red)';
+        } else if (isStalled) {
+          detail      = `⏸ ${tokenCount.toLocaleString()}tok · ${elapsed.toFixed(0)}s · 청크 대기 ${idle.toFixed(0)}s`;
+          statusMsg   = `⏸ 청크 대기 ${idle.toFixed(0)}s · 전체 ${elapsed.toFixed(0)}s`;
+          statusColor = 'var(--amber)';
+        } else if (tokenCount > 0) {
+          detail      = `↓ ${tokenCount.toLocaleString()}tok · ${elapsed.toFixed(0)}s · ${tps.toFixed(1)} tok/s`;
+          statusMsg   = `단일 컨텍스트 변환 중… ${elapsed.toFixed(0)}s`;
+          statusColor = 'var(--amber)';
+        } else {
+          detail      = `대기 중… ${elapsed.toFixed(0)}s`;
+          statusMsg   = `단일 컨텍스트 변환 중… ${elapsed.toFixed(0)}s`;
+          statusColor = 'var(--amber)';
+        }
+      }
+      monSetTokens(detail);
+      monUpdateDetail('s-llm', detail);
+      monSetStatus(statusMsg, statusColor);
+      setStatus('lo', isStalled
+        ? (phase === 'thinking' ? `⏳ thinking ${elapsed.toFixed(0)}s` : `⏸ idle ${idle.toFixed(0)}s`)
+        : `변환 중… ${tokenCount.toLocaleString()}tok ${elapsed.toFixed(0)}s`);
     };
-    const { raw, finish } = await callLLM(host, model,
-      `${getLang().expert} Follow all instructions exactly.`,
-      prompt, onChunk,
-      'rtl',
-      _batchAbortController?.signal    // 사용자 ■ 중단 버튼이 즉시 abort 가능
-    );
+    liveTimer = setInterval(tickMonitor, 1000);
+    tickMonitor();   // 즉시 1회 호출 (빈 화면 회피)
+
+    const onChunk = (partial, meta) => {
+      tokenCount  = meta?.tokens ?? Math.round(partial.length / 3.5);
+      lastChunkAt = meta?.lastChunkAt ?? Date.now();
+      // 청크가 들어온 순간 → streaming phase 로 전환 + stall 해제
+      phase     = 'streaming';
+      isStalled = false;
+    };
+    const onProgress = ({ phase: p, stalled, idleMs }) => {
+      // callLLM 의 watchdog 이 phase 를 직접 판정해서 넘겨줌
+      phase     = p || phase;
+      isStalled = stalled;
+      // streaming phase 에서만 lastChunkAt 동기화 (thinking 에선 의미 없음)
+      if (phase === 'streaming' && !stalled) lastChunkAt = Date.now() - idleMs;
+    };
+
+    let raw, finish;
+    try {
+      ({ raw, finish } = await callLLM(host, model,
+        `${getLang().expert} Follow all instructions exactly.`,
+        prompt, onChunk,
+        'rtl',
+        _batchAbortController?.signal,    // 사용자 ■ 중단 버튼이 즉시 abort 가능
+        {
+          firstByteWarnMs: 300000,   // 5분 (thinking 모델 대응)
+          idleWarnMs:      60000,    // 1분 (사내 슬로우 LLM 의 자연스런 갭)
+          idleAbortMs:     -1,       // 자동 abort 비활성 — 사용자가 ■ 로 결정
+          onProgress,
+        }
+      ));
+    } finally {
+      if (liveTimer) clearInterval(liveTimer);
+    }
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
     const outTokens = Math.round(raw.length / 3.5);
     dbgLog('RES', `단일 응답 ~${outTokens.toLocaleString()} tokens  finish=${finish}  (${elapsed}s)`, 'res');

@@ -72,7 +72,25 @@ function downloadLlmLog() {
 //  'json'    — 구조화 분석 (중간 출력, 약간 유연한 top_p)
 //  'json-sm' — 단일 항목 JSON (소형 출력)
 //
-async function callLLM(host, model, systemMsg, userMsg, onChunk, mode = 'rtl', signal = null) {
+// opts (선택):
+//  Stall 감지는 phase 별로 다른 임계값 사용:
+//    phase='thinking'  — 첫 청크 수신 전 (추론 모델의 thinking, 입력 처리 중)
+//    phase='streaming' — 첫 청크 이후 (실제 토큰 생성 중)
+//
+//  firstByteWarnMs  : 첫 청크 전 이 값(ms) 초과 시 dbgLog 경고
+//                     기본 300000 (5분). 추론 모델의 긴 thinking 허용
+//  firstByteAbortMs : 첫 청크 전 이 값(ms) 초과 시 자동 abort
+//                     기본 -1 (비활성)
+//  idleWarnMs       : 청크 간 idle 시간이 이 값(ms) 초과 시 dbgLog 경고
+//                     기본 60000 (60s). 사내 슬로우 LLM 의 자연스런 갭 흡수
+//  idleAbortMs      : 청크 간 idle 이 이 값(ms) 초과 시 자동 abort
+//                     기본 -1 (비활성). RTL 변환은 사용자 직접 중단 권장
+//  onProgress       : ({ phase, stalled, idleMs, lastChunkAt, tokens, elapsedMs, firstByteAt }) => void
+//                     약 1초 주기로 호출. 청크 유무와 무관하게 호출되므로
+//                     UI 측 live timer 갱신용으로 활용 가능
+//  onChunk(full, meta) : meta = { tokens, lastChunkAt, elapsedMs }
+//                     기존 호출자(meta 무시) 와 호환됨
+async function callLLM(host, model, systemMsg, userMsg, onChunk, mode = 'rtl', signal = null, opts = {}) {
   const inputTok = estimateTokens(systemMsg + userMsg);
   const apiKey   = document.getElementById('oApiKey')?.value.trim() || '';
   const endpoint = host.replace(/\/+$/, '') + '/chat/completions';
@@ -82,6 +100,16 @@ async function callLLM(host, model, systemMsg, userMsg, onChunk, mode = 'rtl', s
   const seed        = getParam('seed',        mode, inputTok);
   const top_p       = getParam('top_p',       mode, inputTok);
   const thinkBuf    = getThinkingBuf(); // 계산용 (전송 안 함)
+
+  // ── Stall watchdog 옵션 ────────────────────────────────
+  // 정상 동작 false positive 최소화 위해 phase 분리:
+  //   thinking — 첫 청크 전 (5분까지 정상으로 간주)
+  //   streaming — 청크 흐름 중 (60s 이상 idle 이면 의심, 180s 이상이면 명백한 stall)
+  const firstByteWarnMs  = (opts.firstByteWarnMs  ?? 300000);   // 5분
+  const firstByteAbortMs = (opts.firstByteAbortMs ?? -1);
+  const idleWarnMs       = (opts.idleWarnMs       ?? 60000);    // 1분
+  const idleAbortMs      = (opts.idleAbortMs      ?? -1);
+  const onProgress       = opts.onProgress;
 
 
   // dev 서버 연결 시 /llm-proxy 경유, 미연결 시 브라우저 직접 연결
@@ -137,11 +165,23 @@ async function callLLM(host, model, systemMsg, userMsg, onChunk, mode = 'rtl', s
   });
 
   let t_first_byte = null;
+
+  // ── 내부 AbortController ───────────────────────────────
+  // 외부 signal 과 stall watchdog 의 자동 abort 를 하나로 합쳐 fetch 에 전달.
+  // 외부 signal 이 abort 되면 internal 도 abort, watchdog 이 timeout 으로
+  // internal.abort() 하면 fetch / reader.read() 가 즉시 reject 됨.
+  const internalCtrl = new AbortController();
+  let _stallAbort = false;   // 자동 abort 인지 사용자 abort 인지 구분용
+  if (signal) {
+    if (signal.aborted) internalCtrl.abort();
+    else signal.addEventListener('abort', () => internalCtrl.abort(), { once: true });
+  }
+
   const res = await fetch(fetchUrl, {
     method:  'POST',
     headers,
     body:    JSON.stringify(bodyObj),
-    ...(signal ? { signal } : {})
+    signal:  internalCtrl.signal,
   });
   const t_http = Date.now();
   dbgLog('INF', `[callLLM] HTTP ${res.status} — ${t_http - t_req}ms  req_id:${req_id}`, 'inf');
@@ -183,14 +223,81 @@ async function callLLM(host, model, systemMsg, userMsg, onChunk, mode = 'rtl', s
   let full   = '';
   let finish = '';
   let buf    = '';   // 청크 경계에 걸린 불완전 라인 누적
+  let t_last_chunk  = null;
+  let stallReported = false;
 
+  // ── Stall watchdog (1초 주기) ──────────────────────────
+  // reader.read() 는 timeout 이 없어 청크가 안 오면 무한 대기. 이 watchdog 이
+  // 청크 간 idle 시간을 측정해서:
+  //   1) phase 별 warn 임계값 초과 시 → dbgLog 경고 + onProgress 콜백
+  //   2) phase 별 abort 임계값 초과 시 → internalCtrl.abort() 로 fetch 강제 종료
+  //
+  // Phase 분리 — 정상 동작 false positive 최소화:
+  //   thinking  (첫 청크 전)  : 추론 모델 thinking / 입력 처리 중. 5분까지 정상.
+  //   streaming (첫 청크 후)  : 토큰 생성 중. 60s+ idle 이면 의심, 180s+ 면 명백.
+  //
+  // onProgress 는 청크 유무와 무관하게 1초 주기로 호출되므로 UI 측의
+  // live timer (elapsed / idle / throughput 표시) 갱신에 사용.
+  const watchdog = setInterval(() => {
+    const now   = Date.now();
+    const phase = t_first_byte ? 'streaming' : 'thinking';
+    // streaming phase 의 idle 은 마지막 청크 기준, thinking phase 는 요청 시각 기준
+    const ref    = t_last_chunk || t_req;
+    const idleMs = now - ref;
+
+    // phase 별 임계값 선택
+    const warnMs  = phase === 'thinking' ? firstByteWarnMs  : idleWarnMs;
+    const abortMs = phase === 'thinking' ? firstByteAbortMs : idleAbortMs;
+    const stalled = warnMs > 0 && idleMs > warnMs;
+
+    // 청크 안 와도 호출자에게 진행 상태 알림
+    if (onProgress) {
+      try {
+        onProgress({
+          phase,
+          stalled,
+          idleMs,
+          lastChunkAt:  t_last_chunk,
+          tokens:       Math.round(full.length / 3.5),
+          elapsedMs:    now - t_req,
+          firstByteAt:  t_first_byte,
+        });
+      } catch(_) {}
+    }
+
+    // 첫 stall 진입 시 1회 dbgLog
+    if (stalled && !stallReported) {
+      stallReported = true;
+      const phaseLabel = phase === 'thinking' ? '첫 청크 대기 (thinking)' : '청크 idle';
+      dbgLog('INF',
+        `[callLLM] ⏸ stall 의심 — ${phaseLabel} ${(idleMs/1000).toFixed(0)}s  req_id:${req_id}`,
+        'inf');
+    }
+
+    // 자동 abort (옵션)
+    if (abortMs > 0 && idleMs > abortMs) {
+      dbgLog('ERR',
+        `[callLLM] ${phase} idle ${(idleMs/1000).toFixed(0)}s > ${(abortMs/1000).toFixed(0)}s — 자동 중단  req_id:${req_id}`,
+        'err');
+      _stallAbort = true;
+      try { internalCtrl.abort(); } catch(_) {}
+    }
+  }, 1000);
+
+  try {
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
 
+    const _now = Date.now();
     if (!t_first_byte) {
-      t_first_byte = Date.now();
-      dbgLog('INF', `[callLLM] 첫 청크 수신 — ${t_first_byte - t_req}ms  req_id:${req_id}`, 'inf');
+      t_first_byte = _now;
+      dbgLog('INF', `[callLLM] 첫 청크 수신 — ${_now - t_req}ms  req_id:${req_id}`, 'inf');
+    }
+    t_last_chunk = _now;
+    if (stallReported) {
+      stallReported = false;
+      dbgLog('INF', `[callLLM] ▶ 청크 재개  req_id:${req_id}`, 'inf');
     }
     buf += decoder.decode(value, { stream: true });
 
@@ -213,7 +320,13 @@ async function callLLM(host, model, systemMsg, userMsg, onChunk, mode = 'rtl', s
         const reason = json.choices?.[0]?.finish_reason;
         if (delta) {
           full += delta;
-          if (onChunk) onChunk(full);
+          if (onChunk) {
+            onChunk(full, {
+              tokens:      Math.round(full.length / 3.5),
+              lastChunkAt: _now,
+              elapsedMs:   _now - t_req,
+            });
+          }
         }
         if (reason) finish = reason;
       } catch (_) {
@@ -228,15 +341,36 @@ async function callLLM(host, model, systemMsg, userMsg, onChunk, mode = 'rtl', s
     try {
       const json  = JSON.parse(jsonStr);
       const delta = json.choices?.[0]?.delta?.content ?? '';
-      if (delta) { full += delta; if (onChunk) onChunk(full); }
+      if (delta) {
+        full += delta;
+        if (onChunk) onChunk(full, {
+          tokens:      Math.round(full.length / 3.5),
+          lastChunkAt: t_last_chunk,
+          elapsedMs:   Date.now() - t_req,
+        });
+      }
       const reason = json.choices?.[0]?.finish_reason;
       if (reason) finish = reason;
     } catch (_) {}
+  }
+  } catch (e) {
+    // stall watchdog 의 자동 abort 인 경우 → 명확한 timeout 에러로 변환.
+    // (AbortError 그대로 throw 하면 호출자의 사용자-중단 분기로 잘못 들어감)
+    if ((e?.name === 'AbortError' || e?.code === 'ABORT_ERR') && _stallAbort) {
+      throw new Error(`LLM 무응답 timeout — ${(idleAbortMs/1000).toFixed(0)}s 동안 청크 미수신`);
+    }
+    throw e;
+  } finally {
+    clearInterval(watchdog);
   }
 
   if (!full) {
     // abort된 경우는 조용히 AbortError를 다시 throw해 상위에서 처리
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+    // stall watchdog 의 자동 abort 인 경우 — 명확한 에러 메시지로 구분
+    if (_stallAbort) {
+      throw new Error(`LLM 무응답 timeout — ${(idleAbortMs/1000).toFixed(0)}s 동안 청크 미수신`);
+    }
     dbgLog('ERR', `[callLLM] 응답이 비어 있음. mode:${mode} endpoint:${endpoint}`, 'err');
     throw new Error('응답이 비어 있습니다 — 서버 로그 또는 콘솔을 확인하세요');
   }
